@@ -1,0 +1,2309 @@
+//#define ENCODE_OPTIMIZE_INTERRUPTS
+
+#include <Encoder.h>
+
+// Arduino DUE interrupt (any digi)
+const int PIN_ENCODER_A1 = 22;
+const int PIN_ENCODER_B1 = 23;
+const int PIN_ENCODER_A2 = 24;
+const int PIN_ENCODER_B2 = 25;
+const int PIN_ENCODER_A3 = 26;
+const int PIN_ENCODER_B3 = 27;
+const int PIN_ENCODER_A4 = 28;
+const int PIN_ENCODER_B4 = 29;
+const int PIN_ENCODER_A5 = 30;
+const int PIN_ENCODER_B5 = 31;
+const int PIN_ENCODER_A6 = 32;
+const int PIN_ENCODER_B6 = 33;
+const int PIN_ENCODER_A7 = 34;
+const int PIN_ENCODER_B7 = 35;
+
+
+
+const int PIN_MOTO1_DIR = 2;
+const int PIN_MOTO1_PUL = 3;
+const int PIN_MOTO2_DIR = 4;
+const int PIN_MOTO2_PUL = 5;
+const int PIN_MOTO3_DIR = 6;
+const int PIN_MOTO3_PUL = 7;
+const int PIN_MOTO4_DIR = 8;
+const int PIN_MOTO4_PUL = 9;
+const int PIN_MOTO5_DIR = 10;
+const int PIN_MOTO5_PUL = 11;
+const int PIN_MOTO6_DIR = 12;
+const int PIN_MOTO6_PUL = 13;
+const int PIN_MOTO7_DIR = 14;
+const int PIN_MOTO7_PUL = 15;
+
+
+const int PIN_LIMITER1_A = 54;
+const int PIN_LIMITER1_B = 55;
+const int PIN_LIMITER2_A = 56;
+const int PIN_LIMITER2_B = 57;
+const int PIN_LIMITER3_A = 58;
+const int PIN_LIMITER3_B = 59;
+const int PIN_LIMITER4_A = 60;
+const int PIN_LIMITER4_B = 61;
+const int PIN_LIMITER5_A = 62;
+const int PIN_LIMITER5_B = 63;
+const int PIN_LIMITER6_A = 64;
+const int PIN_LIMITER6_B = 65;
+const int PIN_LIMITER7_A = 52;
+const int PIN_LIMITER7_B = 53;
+
+const int PIN_EMERGENCY_STOP = 50;
+
+// Arduino ADK interrupt
+//const int PIN_ENCODER_A = 2;
+//const int PIN_ENCODER_B = 3;
+
+
+Encoder amt_encoder1(PIN_ENCODER_A1, PIN_ENCODER_B1);
+Encoder amt_encoder2(PIN_ENCODER_A2, PIN_ENCODER_B2);
+Encoder amt_encoder3(PIN_ENCODER_A3, PIN_ENCODER_B3);
+Encoder amt_encoder4(PIN_ENCODER_A4, PIN_ENCODER_B4);
+Encoder amt_encoder5(PIN_ENCODER_A5, PIN_ENCODER_B5);
+Encoder amt_encoder6(PIN_ENCODER_A6, PIN_ENCODER_B6);
+Encoder amt_encoder7(PIN_ENCODER_A7, PIN_ENCODER_B7);
+
+
+const int MAIN_PULSE_DELAY = 400;
+
+enum JointID
+{
+  JOINT_S1,
+  JOINT_S2,
+  JOINT_E1,
+  JOINT_E2,
+  JOINT_W1,
+  JOINT_W2,
+  JOINT_G
+};
+
+
+struct Command
+{
+  Command()
+  {
+    // nothing
+  }
+  
+  Command(int _parallel_stage, int _motion_steps)
+    : parallel_stage(_parallel_stage)
+    , motion_steps(_motion_steps)
+  {
+    // nothing
+  }
+
+  int parallel_stage;
+  int motion_steps;
+};
+
+
+const int JOINT_COMMAND_QUEUE_SIZE = 64;
+
+struct CommandQueue
+{
+  CommandQueue()
+    : first(0)
+    , last(0)
+  {
+    // nothing
+  }
+
+  bool empty(void)
+  {
+    return (first == last);
+  }
+
+  void queue_Command(Command command)
+  {
+    Commands[last] = command;
+    ++last;
+    last %= JOINT_COMMAND_QUEUE_SIZE;
+  };
+  
+  void dequeue_Command(void)
+  {
+    ++first;
+    first %= JOINT_COMMAND_QUEUE_SIZE;
+  }
+    
+  int first;
+  int last;
+
+  Command Commands[JOINT_COMMAND_QUEUE_SIZE];
+};
+
+CommandQueue command_Queue_S1;
+CommandQueue command_Queue_S2;
+CommandQueue command_Queue_E1;
+CommandQueue command_Queue_E2;
+CommandQueue command_Queue_W1;
+CommandQueue command_Queue_W2;
+CommandQueue command_Queue_G;
+
+
+const double JOINT_S1_TIMER_SLOW_PERIOD = 32.0;
+const double JOINT_S1_TIMER_FAST_PERIOD = 8.0;
+const int JOINT_S1_FULL_SPEED_STEPS = 64;
+
+const int JOINT_S1_LIMITER_HIT_TRESHOLD = 4;
+const int JOINT_S1_LIMITER_HIT_PERIOD = 16;
+const int JOINT_S1_AWAY_LIMITER_STEPS = 32;
+
+const double JOINT_S2_TIMER_SLOW_PERIOD = 32.0;
+const double JOINT_S2_TIMER_FAST_PERIOD = 16.0;
+const int JOINT_S2_FULL_SPEED_STEPS = 64;
+
+
+// modification for rev.2: needs higher speed
+/*
+const double JOINT_S2_TIMER_SLOW_PERIOD = 12.0;
+const double JOINT_S2_TIMER_FAST_PERIOD = 6.0;
+const int JOINT_S2_FULL_SPEED_STEPS = 64;
+*/
+
+const int JOINT_S2_LIMITER_HIT_TRESHOLD = 4;
+const int JOINT_S2_LIMITER_HIT_PERIOD = 16;
+const int JOINT_S2_AWAY_LIMITER_STEPS = 32;
+
+
+const double JOINT_E1_TIMER_SLOW_PERIOD = 16.0;
+const double JOINT_E1_TIMER_FAST_PERIOD = 4.0;
+const int JOINT_E1_FULL_SPEED_STEPS = 128;
+
+const int JOINT_E1_LIMITER_HIT_TRESHOLD = 4;
+const int JOINT_E1_LIMITER_HIT_PERIOD = 16;
+const int JOINT_E1_AWAY_LIMITER_STEPS = 32;
+
+
+const double JOINT_E2_TIMER_SLOW_PERIOD = 16.0;
+const double JOINT_E2_TIMER_FAST_PERIOD = 3.0;
+const int JOINT_E2_FULL_SPEED_STEPS = 128;
+
+const int JOINT_E2_LIMITER_HIT_TRESHOLD = 4;
+const int JOINT_E2_LIMITER_HIT_PERIOD = 16;
+const int JOINT_E2_AWAY_LIMITER_STEPS = 32;
+
+
+const double JOINT_W1_TIMER_SLOW_PERIOD = 16.0;
+const double JOINT_W1_TIMER_FAST_PERIOD = 2.0;
+const int JOINT_W1_FULL_SPEED_STEPS = 128;
+
+const int JOINT_W1_LIMITER_HIT_TRESHOLD = 4;
+const int JOINT_W1_LIMITER_HIT_PERIOD = 16;
+const int JOINT_W1_AWAY_LIMITER_STEPS = 32;
+
+
+const double JOINT_W2_TIMER_SLOW_PERIOD = 16.0;
+const double JOINT_W2_TIMER_FAST_PERIOD = 2.0;
+const int JOINT_W2_FULL_SPEED_STEPS = 128;
+
+const int JOINT_W2_LIMITER_HIT_TRESHOLD = 4;
+const int JOINT_W2_LIMITER_HIT_PERIOD = 16;
+const int JOINT_W2_AWAY_LIMITER_STEPS = 32;
+
+
+const double JOINT_G_TIMER_SLOW_PERIOD = 8.0;
+const double JOINT_G_TIMER_FAST_PERIOD = 2.0;
+const int JOINT_G_FULL_SPEED_STEPS = 128;
+
+const int JOINT_G_LIMITER_HIT_TRESHOLD = 4;
+const int JOINT_G_LIMITER_HIT_PERIOD = 16;
+const int JOINT_G_AWAY_LIMITER_STEPS = 32;
+
+enum JointState
+{
+  JOINT_STATE_HOLDING,
+  JOINT_STATE_START_MOVING,
+  JOINT_STATE_MOVING_FORWARD,
+  JOINT_STATE_HITTING_LIMITER,
+  JOINT_STATE_MOVING_AWAY_LIMITER
+};
+
+
+struct Joint
+{
+  Joint()
+    : state(JOINT_STATE_HOLDING)
+    , limiter_hit_period(0)
+    , limiter_hit_count(0)
+    , total_steps_made(0)
+  {
+    // nothing
+  }
+  
+  JointState state;
+
+  int discrete_time;
+  double assumed_time;
+  double current_period;
+
+  int total_motion_steps;
+  int total_steps_made;
+
+  int limiter_hit_period;
+  int limiter_hit_count;
+};
+
+const int PARALLEL_STAGE_PROMOTION_STEPS = 4;
+
+int active_joints_count = 0;
+
+int active_parallel_stage = 1;
+int parallel_stage_promotion = 0;
+
+Joint joint_S1;
+Joint joint_S2;
+Joint joint_E1;
+Joint joint_E2;
+Joint joint_W1;
+Joint joint_W2;
+Joint joint_G;
+
+
+enum MainState
+{
+  MAIN_STATE_IDLE,
+  MAIN_STATE_ACTIVE
+};
+
+
+MainState main_state = MAIN_STATE_IDLE;
+
+
+void setup()
+{  
+  pinMode(PIN_LIMITER1_A, INPUT_PULLUP);
+  pinMode(PIN_LIMITER1_B, INPUT_PULLUP);
+  pinMode(PIN_LIMITER2_A, INPUT_PULLUP);
+  pinMode(PIN_LIMITER2_B, INPUT_PULLUP);
+  pinMode(PIN_LIMITER3_A, INPUT_PULLUP);
+  pinMode(PIN_LIMITER3_B, INPUT_PULLUP);
+  pinMode(PIN_LIMITER4_A, INPUT_PULLUP);
+  pinMode(PIN_LIMITER4_B, INPUT_PULLUP);  
+  pinMode(PIN_LIMITER5_A, INPUT_PULLUP);
+  pinMode(PIN_LIMITER5_B, INPUT_PULLUP);
+  pinMode(PIN_LIMITER6_A, INPUT_PULLUP);
+  pinMode(PIN_LIMITER6_B, INPUT_PULLUP);
+  pinMode(PIN_LIMITER7_A, INPUT_PULLUP);
+  pinMode(PIN_LIMITER7_B, INPUT_PULLUP);
+  pinMode(PIN_EMERGENCY_STOP, INPUT_PULLUP);
+ 
+  digitalWrite(PIN_LIMITER1_A, HIGH);
+  digitalWrite(PIN_LIMITER1_B, HIGH);
+  digitalWrite(PIN_LIMITER2_A, HIGH);
+  digitalWrite(PIN_LIMITER2_B, HIGH);
+  digitalWrite(PIN_LIMITER3_A, HIGH);
+  digitalWrite(PIN_LIMITER3_B, HIGH);
+  digitalWrite(PIN_LIMITER4_A, HIGH);
+  digitalWrite(PIN_LIMITER4_B, HIGH);
+  digitalWrite(PIN_LIMITER5_A, HIGH);
+  digitalWrite(PIN_LIMITER5_B, HIGH);
+  digitalWrite(PIN_LIMITER6_A, HIGH);
+  digitalWrite(PIN_LIMITER6_B, HIGH);
+  digitalWrite(PIN_LIMITER7_A, HIGH);
+  digitalWrite(PIN_LIMITER7_B, HIGH);
+  digitalWrite(PIN_EMERGENCY_STOP, HIGH);
+
+  pinMode(PIN_MOTO1_PUL, OUTPUT);
+  pinMode(PIN_MOTO1_DIR, OUTPUT);  
+  pinMode(PIN_MOTO2_PUL, OUTPUT);
+  pinMode(PIN_MOTO2_DIR, OUTPUT);  
+  pinMode(PIN_MOTO3_PUL, OUTPUT);
+  pinMode(PIN_MOTO3_DIR, OUTPUT);  
+  pinMode(PIN_MOTO4_PUL, OUTPUT);
+  pinMode(PIN_MOTO4_DIR, OUTPUT);  
+  pinMode(PIN_MOTO5_PUL, OUTPUT);
+  pinMode(PIN_MOTO5_DIR, OUTPUT);  
+  pinMode(PIN_MOTO6_PUL, OUTPUT);
+  pinMode(PIN_MOTO6_DIR, OUTPUT);  
+  pinMode(PIN_MOTO7_PUL, OUTPUT);
+  pinMode(PIN_MOTO7_DIR, OUTPUT);  
+    
+  Serial.begin(115200);
+
+  amt_encoder1.write(0);
+  amt_encoder2.write(0);
+  amt_encoder3.write(0);
+  amt_encoder4.write(0);  
+  amt_encoder5.write(0);  
+  amt_encoder6.write(0);
+  amt_encoder7.write(0);
+  
+/*
+  command_Queue_W1.queue_Command(Command(1, -2048));
+  command_Queue_W1.queue_Command(Command(2, 2048));
+  command_Queue_W1.queue_Command(Command(3, -2048));  
+  command_Queue_W1.queue_Command(Command(4, 2048));  
+*/
+/*
+  command_Queue_G.queue_Command(Command(2, -1024));
+  command_Queue_G.queue_Command(Command(3, 1024));  
+  command_Queue_G.queue_Command(Command(4, -1024));
+*/
+/*
+  command_Queue_E1.queue_Command(Command(1, -1024));
+  command_Queue_E1.queue_Command(Command(2, 1024));
+  command_Queue_E1.queue_Command(Command(3, -2048));
+  command_Queue_E1.queue_Command(Command(8, 2048));  
+
+  command_Queue_E2.queue_Command(Command(4, -1024));
+  command_Queue_E2.queue_Command(Command(5, 1024));
+  command_Queue_E2.queue_Command(Command(6, -2048));
+  command_Queue_E2.queue_Command(Command(7, 2048));    
+
+  command_Queue_W2.queue_Command(Command(1, -1024));
+  command_Queue_W2.queue_Command(Command(2, 1024));
+  command_Queue_W2.queue_Command(Command(3, -2048));
+  command_Queue_W2.queue_Command(Command(4, 2048));  
+  command_Queue_W2.queue_Command(Command(5, -2048));
+  command_Queue_W2.queue_Command(Command(6, 2048));    
+  */
+
+ 
+  // First complete run (must start from stand)
+  /*
+  command_Queue_S2.queue_Command(Command(1, -512));
+  command_Queue_E1.queue_Command(Command(1, -1024));
+
+  command_Queue_S1.queue_Command(Command(2, -512));
+  command_Queue_W2.queue_Command(Command(2, -1024));
+  command_Queue_W1.queue_Command(Command(2, -2048));
+  command_Queue_G.queue_Command(Command(2, 1024));  
+  command_Queue_E2.queue_Command(Command(2, -2048));
+
+  command_Queue_E1.queue_Command(Command(3, -1024));
+  command_Queue_E1.queue_Command(Command(4, 1024));
+    
+  command_Queue_E2.queue_Command(Command(5, 2048));      
+  command_Queue_G.queue_Command(Command(5, -1024));  
+  command_Queue_W1.queue_Command(Command(5, 2048));    
+  command_Queue_W2.queue_Command(Command(5, 1024));  
+  command_Queue_S1.queue_Command(Command(5, 512));
+
+  command_Queue_E1.queue_Command(Command(6, 1024));  
+  command_Queue_S2.queue_Command(Command(6, 512));
+
+  command_Queue_W2.queue_Command(Command(7, 2048));
+  command_Queue_E1.queue_Command(Command(7, 1024));
+  command_Queue_G.queue_Command(Command(7, -1024));  
+  command_Queue_W1.queue_Command(Command(7, 2048));
+
+  command_Queue_W1.queue_Command(Command(8, -2048));
+  command_Queue_G.queue_Command(Command(8, 1024));  
+  command_Queue_E1.queue_Command(Command(8, -1024));  
+  command_Queue_W2.queue_Command(Command(8, -2048));
+*/
+  
+
+/*
+ * Program Coca-cola-barman
+ */
+/*----------------*/
+/*
+  command_Queue_E1.queue_Command(Command(1, -1024));
+  command_Queue_S2.queue_Command(Command(1, -256));
+  
+  command_Queue_G.queue_Command(Command(2, -2048));
+  command_Queue_W2.queue_Command(Command(3, -3584));    
+  command_Queue_W1.queue_Command(Command(3, 4096));      
+  command_Queue_S1.queue_Command(Command(3, 700));
+
+  command_Queue_W1.queue_Command(Command(4, 4096));      
+  command_Queue_E1.queue_Command(Command(4, 2048));
+
+  command_Queue_E1.queue_Command(Command(5, -128));
+  command_Queue_W1.queue_Command(Command(5, 640));      
+  command_Queue_S2.queue_Command(Command(5, 160));  
+
+  command_Queue_G.queue_Command(Command(6, 2048));
+  command_Queue_S2.queue_Command(Command(7, -256));  
+  command_Queue_E1.queue_Command(Command(7, -256));
+  command_Queue_W1.queue_Command(Command(7, -1024));
+  command_Queue_S1.queue_Command(Command(7, -320));          
+
+  command_Queue_E2.queue_Command(Command(8, 1024 + 2048 + 1024));    
+  command_Queue_W2.queue_Command(Command(8, 2048 + 1024 + 512));      
+  command_Queue_W2.queue_Command(Command(9, -2048 - 1024 - 512));      
+  command_Queue_E2.queue_Command(Command(9, -1024 - 2048 - 1024));  
+
+  command_Queue_E2.queue_Command(Command(10, -2048));    
+  command_Queue_E2.queue_Command(Command(11, 2048));  
+
+  command_Queue_S1.queue_Command(Command(12, 320));          
+  command_Queue_W1.queue_Command(Command(12, 1024));      
+  command_Queue_E1.queue_Command(Command(13, 256));
+  command_Queue_S2.queue_Command(Command(13, 256));    
+  command_Queue_G.queue_Command(Command(14, -2048));  
+
+  command_Queue_S2.queue_Command(Command(15, -160));     
+  command_Queue_W1.queue_Command(Command(15, -640));      
+  command_Queue_E1.queue_Command(Command(15, 128));
+  
+  command_Queue_E1.queue_Command(Command(16, -2048));
+  command_Queue_W1.queue_Command(Command(16, -4096));
+
+  command_Queue_S1.queue_Command(Command(17, -700));
+  command_Queue_W1.queue_Command(Command(17, -4096));           
+  command_Queue_W2.queue_Command(Command(17, 3584));    
+  command_Queue_G.queue_Command(Command(18, 2048));
+    
+  command_Queue_E1.queue_Command(Command(19, 1024));
+  command_Queue_S2.queue_Command(Command(19, 256));
+*/
+/*----------------*/  
+
+
+/*
+ * Program Japano-vzperac
+ */
+/*----------------*/
+/*
+  command_Queue_E1.queue_Command(Command(1, -1024));
+  command_Queue_S2.queue_Command(Command(1, -256));  
+  command_Queue_G.queue_Command(Command(2, -2048));
+
+  command_Queue_S2.queue_Command(Command(3, 320));  
+  command_Queue_E1.queue_Command(Command(3, 640));
+  command_Queue_W1.queue_Command(Command(3, 1024));   
+  command_Queue_G.queue_Command(Command(4, 2048));
+
+  command_Queue_E1.queue_Command(Command(5, -2048));
+  command_Queue_W1.queue_Command(Command(5, 4096));
+  command_Queue_S2.queue_Command(Command(5, -256));  
+
+  command_Queue_S2.queue_Command(Command(6, 256));
+  command_Queue_W1.queue_Command(Command(6, -4096));   
+  command_Queue_E1.queue_Command(Command(6, 2048));
+
+  command_Queue_G.queue_Command(Command(7, -2048));
+  command_Queue_W1.queue_Command(Command(8, -1024));       
+  command_Queue_E1.queue_Command(Command(8, -640)); 
+  command_Queue_S2.queue_Command(Command(8, -320));    
+
+  command_Queue_G.queue_Command(Command(9, 2048));
+  command_Queue_S2.queue_Command(Command(10, 256));  
+  command_Queue_E1.queue_Command(Command(10, 1024));
+*/
+/*----------------*/  
+
+/*
+ * Program Horizontal flex
+ */
+/*----------------*/
+/*
+  command_Queue_E1.queue_Command(Command(1, -1024 - 256));
+  command_Queue_S2.queue_Command(Command(1, -128));  
+
+  command_Queue_W1.queue_Command(Command(2, 2048 + 1024));   
+  command_Queue_E2.queue_Command(Command(3, -1024 - 2048 - 2048));    
+  command_Queue_W2.queue_Command(Command(3, -2048 - 1024 - 1024));      
+  command_Queue_W2.queue_Command(Command(4, 2048 + 1024 + 1024));      
+  command_Queue_E2.queue_Command(Command(4, 1024 + 2048 + 2048));    
+  command_Queue_W1.queue_Command(Command(5, -2048 - 1024));   
+  
+  command_Queue_S2.queue_Command(Command(6, 128));  
+  command_Queue_E1.queue_Command(Command(6, 1024 + 256));
+*/
+
+/*
+ * Program Vertical flex
+ */
+/*----------------*/
+/*
+  command_Queue_E1.queue_Command(Command(1, -1024 - 1024 - 1024 - 256));
+  command_Queue_S2.queue_Command(Command(1, -64));  
+
+  command_Queue_W1.queue_Command(Command(2, 2048 + 1024));   
+  command_Queue_E2.queue_Command(Command(3, -1024 - 2048 - 2048));    
+  command_Queue_W2.queue_Command(Command(3, -2048 - 1024 - 1024));      
+  command_Queue_G.queue_Command(Command(3, -2048));
+  command_Queue_S1.queue_Command(Command(3, -800));
+  command_Queue_S1.queue_Command(Command(4, 800));  
+  command_Queue_G.queue_Command(Command(4, 2048));  
+  command_Queue_W2.queue_Command(Command(4, 2048 + 1024 + 1024));      
+  command_Queue_E2.queue_Command(Command(4, 1024 + 2048 + 2048));    
+  command_Queue_W1.queue_Command(Command(5, -2048 - 1024));   
+  
+  command_Queue_S2.queue_Command(Command(6, 64));  
+  command_Queue_E1.queue_Command(Command(6, 1024 + 1024 + 1024 + 256));
+*/
+
+/*
+ * Program Blocks World 3
+ */
+ /*
+  command_Queue_E1.queue_Command(Command(1, -1024));
+  command_Queue_S2.queue_Command(Command(1, -256));
+  
+  command_Queue_W2.queue_Command(Command(2, 2048 - 512));
+  command_Queue_S1.queue_Command(Command(2, 256 + 256 + 128)); 
+  command_Queue_W1.queue_Command(Command(2, -1024));
+
+  command_Queue_G.queue_Command(Command(3, -2048));
+     
+  command_Queue_E1.queue_Command(Command(4, 512 + 256 + 256 + 128 + 64));
+  command_Queue_W1.queue_Command(Command(4, 512 + 256));
+
+  command_Queue_G.queue_Command(Command(5, 2048));
+
+  command_Queue_S2.queue_Command(Command(6, -128));  
+  //command_Queue_E1.queue_Command(Command(6, -1024));
+  command_Queue_W1.queue_Command(Command(6, 1024));
+
+  command_Queue_W1.queue_Command(Command(7, 2048 + 2048 + 2048 + 1024));
+  command_Queue_E1.queue_Command(Command(8, 1024));
+  command_Queue_W2.queue_Command(Command(8, 2048));
+  
+  command_Queue_S2.queue_Command(Command(9, 256));
+  command_Queue_E1.queue_Command(Command(9, -1024 + 128));  
+  command_Queue_S1.queue_Command(Command(9, -256));     
+
+  command_Queue_E1.queue_Command(Command(10, 256));  
+  command_Queue_W1.queue_Command(Command(10, -64));
+  command_Queue_S2.queue_Command(Command(10, 64));  
+  
+  command_Queue_G.queue_Command(Command(11, -2048));
+
+  command_Queue_S2.queue_Command(Command(12, -64));  
+  command_Queue_W1.queue_Command(Command(12, 64));
+  command_Queue_E1.queue_Command(Command(12, -256));  
+
+  command_Queue_S1.queue_Command(Command(13, 256));   
+  command_Queue_E1.queue_Command(Command(13, 1024 - 128));  
+  command_Queue_S2.queue_Command(Command(13, -256));
+  
+  command_Queue_W2.queue_Command(Command(14, -2048));
+  command_Queue_E1.queue_Command(Command(14, -1024));
+  command_Queue_W1.queue_Command(Command(15, -2048 - 2048 - 2048 - 1024));
+
+  command_Queue_W1.queue_Command(Command(16, -1024));
+  //command_Queue_E1.queue_Command(Command(16, 1024));
+  command_Queue_S2.queue_Command(Command(16, 128));  
+  command_Queue_G.queue_Command(Command(16, -2048));  
+  
+  command_Queue_W1.queue_Command(Command(17, -512 - 256));       
+  command_Queue_E1.queue_Command(Command(17, -512 - 256 - 256 - 128 - 64));
+  
+  command_Queue_W1.queue_Command(Command(18, 1024));   
+  command_Queue_S1.queue_Command(Command(18, -256 - 256 - 128)); 
+  command_Queue_W2.queue_Command(Command(18, -2048 + 512));     
+
+  command_Queue_G.queue_Command(Command(19, -2048));
+  command_Queue_G.queue_Command(Command(19, 2048));  
+  
+  command_Queue_S2.queue_Command(Command(20, 256));  
+  command_Queue_E1.queue_Command(Command(20, 1024));
+*/
+
+/*
+ * Program Wrist flex
+ */
+/*----------------*/
+/*
+  command_Queue_W2.queue_Command(Command(1, 4096));
+  command_Queue_W2.queue_Command(Command(2, -4096));
+  command_Queue_W2.queue_Command(Command(3, 4096));
+  command_Queue_W2.queue_Command(Command(4, -4096));
+  command_Queue_W2.queue_Command(Command(5, 4096));
+  command_Queue_W2.queue_Command(Command(6, -4096));  
+*/
+
+/*
+ * Program Elbow flex
+ */
+/*----------------*/
+/*
+  command_Queue_E2.queue_Command(Command(1, -4096));
+  command_Queue_E2.queue_Command(Command(2, 4096));
+  command_Queue_E2.queue_Command(Command(3, -4096));
+  command_Queue_E2.queue_Command(Command(4, 4096));
+*/
+
+/*
+ * Program Callibration, Inverse Kinematics
+ */
+
+ /*
+  
+//command_Queue_E1.queue_Command(Command(1, -256));
+   
+  command_Queue_S1.queue_Command(Command(1, 103));
+  command_Queue_S2.queue_Command(Command(1, 280)); 
+
+  command_Queue_E1.queue_Command(Command(1, -286));
+  command_Queue_E2.queue_Command(Command(1, -482));
+
+  command_Queue_W1.queue_Command(Command(1, -1749));
+  command_Queue_W2.queue_Command(Command(1, 1121));  
+
+  command_Queue_G.queue_Command(Command(2, -1024)); 
+  command_Queue_G.queue_Command(Command(3, 1024)); 
+
+  command_Queue_S1.queue_Command(Command(4, -103));
+  command_Queue_S2.queue_Command(Command(4, -280)); 
+
+  command_Queue_E1.queue_Command(Command(4, 286));
+  command_Queue_E2.queue_Command(Command(4, 482));
+
+  command_Queue_W1.queue_Command(Command(4, 1749));
+  command_Queue_W2.queue_Command(Command(4, -1121));    
+  */
+  /*
+  command_Queue_S1.queue_Command(Command(1, -538));
+  command_Queue_S2.queue_Command(Command(1, 148)); 
+
+  command_Queue_E1.queue_Command(Command(1, 0));
+  command_Queue_E2.queue_Command(Command(1, 2295));
+
+  command_Queue_W1.queue_Command(Command(1, -1245));
+  command_Queue_W2.queue_Command(Command(1, -968));  
+
+  command_Queue_G.queue_Command(Command(2, -1024)); 
+  command_Queue_G.queue_Command(Command(3, 1024)); 
+
+  command_Queue_S1.queue_Command(Command(4, 538));
+  command_Queue_S2.queue_Command(Command(4, -148)); 
+
+  command_Queue_E1.queue_Command(Command(4, 0));
+  command_Queue_E2.queue_Command(Command(4, -2295));
+
+  command_Queue_W1.queue_Command(Command(4, 1245));
+  command_Queue_W2.queue_Command(Command(4, 968));  
+  */
+  /*
+  command_Queue_S1.queue_Command(Command(1, 89));
+  command_Queue_S2.queue_Command(Command(1, 280)); 
+
+  command_Queue_E1.queue_Command(Command(1, -344));
+  command_Queue_E2.queue_Command(Command(1, -416));
+
+  command_Queue_W1.queue_Command(Command(1, -1788));
+  command_Queue_W2.queue_Command(Command(1, 72));  
+
+  command_Queue_G.queue_Command(Command(2, -1024)); 
+  command_Queue_G.queue_Command(Command(3, 1024)); 
+
+  command_Queue_S1.queue_Command(Command(4, -89));
+  command_Queue_S2.queue_Command(Command(4, -280)); 
+
+  command_Queue_E1.queue_Command(Command(4, 344));
+  command_Queue_E2.queue_Command(Command(4, 416));
+
+  command_Queue_W1.queue_Command(Command(4, 1788));
+  command_Queue_W2.queue_Command(Command(4, -72));  
+  */
+  /*
+  command_Queue_S1.queue_Command(Command(1, 172));
+  command_Queue_S2.queue_Command(Command(1, 280)); 
+
+  command_Queue_E1.queue_Command(Command(1, 1400));
+  command_Queue_E2.queue_Command(Command(1, 4311));
+
+  command_Queue_W1.queue_Command(Command(1, -2927));
+  command_Queue_W2.queue_Command(Command(1, 2631));  
+
+  command_Queue_G.queue_Command(Command(2, -1024)); 
+  command_Queue_G.queue_Command(Command(3, 1024)); 
+
+  command_Queue_S1.queue_Command(Command(4, -172));
+  command_Queue_S2.queue_Command(Command(4, -280)); 
+
+  command_Queue_E1.queue_Command(Command(4, -1400));
+  command_Queue_E2.queue_Command(Command(4, -4311));
+
+  command_Queue_W1.queue_Command(Command(4, 2927));
+  command_Queue_W2.queue_Command(Command(4, -2631));  
+  */
+  /*
+  command_Queue_S1.queue_Command(Command(1, 10));
+  command_Queue_S2.queue_Command(Command(1, 28)); 
+
+  command_Queue_E1.queue_Command(Command(1, -28));
+  command_Queue_E2.queue_Command(Command(1, 48));
+
+  command_Queue_W1.queue_Command(Command(1, 174));
+  command_Queue_W2.queue_Command(Command(1, 112));  
+
+
+  command_Queue_S1.queue_Command(Command(2, -10));
+  command_Queue_S2.queue_Command(Command(2, -28)); 
+
+  command_Queue_E1.queue_Command(Command(2, 28));
+  command_Queue_E2.queue_Command(Command(2, -48));
+
+  command_Queue_W1.queue_Command(Command(2, -174));
+  command_Queue_W2.queue_Command(Command(2, -112));    
+  */
+/*
+  command_Queue_G.queue_Command(Command(2, -2048));
+  command_Queue_G.queue_Command(Command(2, 2048));
+  
+  command_Queue_S2.queue_Command(Command(3, 256));
+  command_Queue_E1.queue_Command(Command(3, 2048));
+*/
+ 
+/*----------------*/
+
+
+/*
+ * Program RR1 rev.2 first test - incomplete run, only J-S2 test
+ */
+/*----------------*/
+/*
+  command_Queue_S2.queue_Command(Command(1, 32));  // up (opposite w.r.t. rev.1)
+  command_Queue_S2.queue_Command(Command(2, -32)); // down (opposite w.r.t. rev.1)
+*/
+/*----------------*/
+
+/*
+ * Program RR1 rev.2 second test - incomplete run, only J-E1 test
+ */
+/*----------------*/
+/*
+  command_Queue_S2.queue_Command(Command(1, 16));  // down
+  command_Queue_S2.queue_Command(Command(2, -16)); // up
+*/
+/*----------------*/
+
+
+/*
+ * Program RR1 rev.1 second test - folding
+ */
+/*----------------*/
+/*
+  command_Queue_S2.queue_Command(Command(1, 64));  // up
+  //command_Queue_S2.queue_Command(Command(2, -16)); // down
+*/
+/*----------------*/
+
+/*
+ * Program RR1 rev.2 third test - incomplete run, only Gripper test
+ */
+/*----------------*/
+
+  command_Queue_G.queue_Command(Command(1, -16));  // close
+  //command_Queue_G.queue_Command(Command(2, -3)); // open
+
+/*----------------*/
+
+
+}  
+
+
+void loop()
+{
+   bool joint_S1_pulsed = false;
+   bool joint_S2_pulsed = false;   
+   bool joint_E1_pulsed = false;
+   bool joint_E2_pulsed = false;   
+   bool joint_W1_pulsed = false;
+   bool joint_W2_pulsed = false;   
+   bool joint_G_pulsed = false;
+
+   // S1 has swapped limiters
+   int joint_S1_limiter_A = digitalRead(PIN_LIMITER6_B);
+   int joint_S1_limiter_B = digitalRead(PIN_LIMITER6_A);     
+
+   
+   int joint_S2_limiter_A = digitalRead(PIN_LIMITER3_A);
+   int joint_S2_limiter_B = digitalRead(PIN_LIMITER3_B);        
+   
+   // modification for rev.2: has swapped limiters on S2
+   /*
+   int joint_S2_limiter_A = digitalRead(PIN_LIMITER3_B);
+   int joint_S2_limiter_B = digitalRead(PIN_LIMITER3_A);        
+   */
+   
+   int joint_E1_limiter_A = digitalRead(PIN_LIMITER5_A);
+   int joint_E1_limiter_B = digitalRead(PIN_LIMITER5_B);     
+
+   int joint_E2_limiter_A = digitalRead(PIN_LIMITER4_A);
+   int joint_E2_limiter_B = digitalRead(PIN_LIMITER4_B);        
+
+   int joint_W1_limiter_A = digitalRead(PIN_LIMITER2_A);
+   int joint_W1_limiter_B = digitalRead(PIN_LIMITER2_B);
+
+   int joint_W2_limiter_A = digitalRead(PIN_LIMITER7_A);
+   int joint_W2_limiter_B = digitalRead(PIN_LIMITER7_B);   
+
+   int joint_G_limiter_A = digitalRead(PIN_LIMITER1_A);
+   int joint_G_limiter_B = digitalRead(PIN_LIMITER1_B);     
+
+/*
+   Serial.print("stage:");
+   Serial.print(active_parallel_stage);
+   Serial.print("\n");
+
+   Serial.print("S1:");
+   Serial.print(joint_S1.total_steps_made);
+   Serial.print(",");
+
+   Serial.print("S2:");
+   Serial.print(joint_S2.total_steps_made);
+   Serial.print(",");
+
+   Serial.print("W1:");
+   Serial.print(joint_W1.total_steps_made);
+   Serial.print(",");
+
+   Serial.print("W2:");
+   Serial.print(joint_W2.total_steps_made);
+   Serial.print(",");
+*/   
+   switch (main_state)
+   {
+     case MAIN_STATE_ACTIVE:
+     {
+       if (active_joints_count == 0)
+       {
+         if (++parallel_stage_promotion >= PARALLEL_STAGE_PROMOTION_STEPS)
+         {
+           parallel_stage_promotion = 0;
+           ++active_parallel_stage;
+
+           main_state = MAIN_STATE_IDLE;
+         }
+       }
+       break;
+     }
+     case MAIN_STATE_IDLE:
+     {
+       // doing nothing
+       break;
+     }
+     default:
+     {
+       break;
+     }
+   }
+
+
+   switch (joint_S1.state)
+   {
+     case JOINT_STATE_HOLDING:
+     {
+       if (!command_Queue_S1.empty())
+       {
+         if (active_parallel_stage == command_Queue_S1.Commands[command_Queue_S1.first].parallel_stage)
+         {
+           joint_S1.total_motion_steps = command_Queue_S1.Commands[command_Queue_S1.first].motion_steps;
+           joint_S1.current_period = JOINT_S1_TIMER_SLOW_PERIOD;
+           joint_S1.state = JOINT_STATE_MOVING_FORWARD;
+
+           joint_S1.discrete_time = 0;
+           joint_S1.assumed_time = 0.0;
+           joint_S1.total_steps_made = 0;
+
+           command_Queue_S1.dequeue_Command();
+           ++active_joints_count;
+
+           main_state = MAIN_STATE_ACTIVE;
+         }
+       }      
+       break;
+     }
+     case JOINT_STATE_MOVING_FORWARD:
+     {
+       if (++joint_S1.discrete_time - joint_S1.assumed_time > joint_S1.current_period)
+       {      
+         if (joint_S1.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO6_DIR, HIGH);
+           digitalWrite(PIN_MOTO6_PUL, HIGH);
+           --joint_S1.total_motion_steps;
+           ++joint_S1.total_steps_made;
+
+           if (joint_S1_limiter_A == HIGH)
+           {
+             joint_S1.state = JOINT_STATE_HITTING_LIMITER;
+             joint_S1.limiter_hit_period = JOINT_S1_LIMITER_HIT_PERIOD;
+             joint_S1.limiter_hit_count = 1;
+           }
+         }
+         else if (joint_S1.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO6_DIR, LOW);
+           digitalWrite(PIN_MOTO6_PUL, HIGH);      
+           ++joint_S1.total_motion_steps;
+           ++joint_S1.total_steps_made;
+
+           if (joint_S1_limiter_B == HIGH)
+           {
+             joint_S1.state = JOINT_STATE_HITTING_LIMITER;           
+             joint_S1.limiter_hit_period = JOINT_S1_LIMITER_HIT_PERIOD;
+             joint_S1.limiter_hit_count = 1;           
+           }
+         }
+         else
+         {
+            joint_S1.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }
+         joint_S1_pulsed = true;
+         joint_S1.assumed_time += joint_S1.current_period;         
+       }
+       break;
+     }
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (++joint_S1.discrete_time - joint_S1.assumed_time > joint_S1.current_period)
+       {      
+         if (--joint_S1.limiter_hit_period <= 0)
+         {
+           joint_S1.state = JOINT_STATE_MOVING_FORWARD;
+         }
+       
+         if (joint_S1.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO6_DIR, HIGH);
+           digitalWrite(PIN_MOTO6_PUL, HIGH);
+           --joint_S1.total_motion_steps;
+           ++joint_S1.total_steps_made;
+
+           if (joint_S1_limiter_A == HIGH)
+           {
+             if (++joint_S1.limiter_hit_count >= JOINT_S1_LIMITER_HIT_TRESHOLD)
+             {
+               joint_S1.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_S1.total_motion_steps = -JOINT_S1_AWAY_LIMITER_STEPS;
+               joint_S1.current_period = JOINT_S1_TIMER_SLOW_PERIOD;
+             }
+             joint_S1.limiter_hit_period = JOINT_S1_LIMITER_HIT_PERIOD;
+           }
+         }
+         else if (joint_S1.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO6_DIR, LOW);
+           digitalWrite(PIN_MOTO6_PUL, HIGH);        
+           ++joint_S1.total_motion_steps;
+           ++joint_S1.total_steps_made;
+
+           if (joint_S1_limiter_B == HIGH)
+           {
+             if (++joint_S1.limiter_hit_count >= JOINT_S1_LIMITER_HIT_TRESHOLD)
+             {
+               joint_S1.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_S1.total_motion_steps = JOINT_S1_AWAY_LIMITER_STEPS;
+               joint_S1.current_period = JOINT_S1_TIMER_SLOW_PERIOD;
+             }
+             joint_S1.limiter_hit_period = JOINT_S1_LIMITER_HIT_PERIOD; 
+           }
+         }
+         else
+         {
+            joint_S1.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }           
+         joint_S1_pulsed = true;
+         joint_S1.assumed_time += joint_S1.current_period;   
+       }
+       break;
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:
+     {
+       if (++joint_S1.discrete_time - joint_S1.assumed_time > joint_S1.current_period)      
+       {      
+         if (joint_S1.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO6_DIR, HIGH);
+           digitalWrite(PIN_MOTO6_PUL, HIGH);
+           --joint_S1.total_motion_steps;
+         }
+         else if (joint_S1.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO6_DIR, LOW);
+           digitalWrite(PIN_MOTO6_PUL, HIGH);        
+           ++joint_S1.total_motion_steps;
+         }
+         else
+         {
+           joint_S1.state = JOINT_STATE_HOLDING;
+           --active_joints_count;
+         }
+         joint_S1_pulsed = true;
+         joint_S1.assumed_time += joint_S1.current_period;
+       }      
+       break;      
+     }
+     default:
+     {
+        break;
+     }
+   }
+
+
+   switch (joint_S2.state)
+   {
+     case JOINT_STATE_HOLDING:
+     {
+       if (!command_Queue_S2.empty())
+       {
+         if (active_parallel_stage == command_Queue_S2.Commands[command_Queue_S2.first].parallel_stage)
+         {
+           joint_S2.total_motion_steps = command_Queue_S2.Commands[command_Queue_S2.first].motion_steps;
+           joint_S2.current_period = JOINT_S2_TIMER_SLOW_PERIOD;
+           joint_S2.state = JOINT_STATE_MOVING_FORWARD;
+
+           joint_S2.discrete_time = 0;
+           joint_S2.assumed_time = 0.0;
+           joint_S2.total_steps_made = 0;
+
+           command_Queue_S2.dequeue_Command();
+           ++active_joints_count;
+
+           main_state = MAIN_STATE_ACTIVE;
+         }
+       }      
+       break;
+     }
+     case JOINT_STATE_MOVING_FORWARD:
+     {
+       if (++joint_S2.discrete_time - joint_S2.assumed_time > joint_S2.current_period)
+       {      
+         if (joint_S2.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO3_DIR, HIGH);
+           digitalWrite(PIN_MOTO3_PUL, HIGH);
+           --joint_S2.total_motion_steps;
+           ++joint_S2.total_steps_made;
+
+           if (joint_S2_limiter_A == HIGH)
+           {
+             joint_S2.state = JOINT_STATE_HITTING_LIMITER;
+             joint_S2.limiter_hit_period = JOINT_S2_LIMITER_HIT_PERIOD;
+             joint_S2.limiter_hit_count = 1;
+           }
+         }
+         else if (joint_S2.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO3_DIR, LOW);
+           digitalWrite(PIN_MOTO3_PUL, HIGH);        
+           ++joint_S2.total_motion_steps;
+           ++joint_S2.total_steps_made;
+
+           if (joint_S2_limiter_B == HIGH)
+           {
+             joint_S2.state = JOINT_STATE_HITTING_LIMITER;           
+             joint_S2.limiter_hit_period = JOINT_S2_LIMITER_HIT_PERIOD;
+             joint_S2.limiter_hit_count = 1;           
+           }
+         }
+         else
+         {
+            joint_S2.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }
+         joint_S2_pulsed = true;
+         joint_S2.assumed_time += joint_S2.current_period;         
+       }
+       break;
+     }
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (++joint_S2.discrete_time - joint_S2.assumed_time > joint_S2.current_period)
+       {      
+         if (--joint_S2.limiter_hit_period <= 0)
+         {
+           joint_S2.state = JOINT_STATE_MOVING_FORWARD;
+         }
+       
+         if (joint_S2.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO3_DIR, HIGH);
+           digitalWrite(PIN_MOTO3_PUL, HIGH);
+           --joint_S2.total_motion_steps;
+           ++joint_S2.total_steps_made;
+
+           if (joint_S2_limiter_A == HIGH)
+           {
+             if (++joint_S2.limiter_hit_count >= JOINT_S2_LIMITER_HIT_TRESHOLD)
+             {
+               joint_S2.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_S2.total_motion_steps = -JOINT_S2_AWAY_LIMITER_STEPS;
+               joint_S2.current_period = JOINT_S2_TIMER_SLOW_PERIOD;
+             }
+             joint_S2.limiter_hit_period = JOINT_S2_LIMITER_HIT_PERIOD;
+           }
+         }
+         else if (joint_S2.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO3_DIR, LOW);
+           digitalWrite(PIN_MOTO3_PUL, HIGH);        
+           ++joint_S2.total_motion_steps;
+           ++joint_S2.total_steps_made;
+
+           if (joint_S2_limiter_B == HIGH)
+           {
+             if (++joint_S2.limiter_hit_count >= JOINT_S2_LIMITER_HIT_TRESHOLD)
+             {
+               joint_S2.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_S2.total_motion_steps = JOINT_S2_AWAY_LIMITER_STEPS;
+               joint_S2.current_period = JOINT_S2_TIMER_SLOW_PERIOD;
+             }
+             joint_S2.limiter_hit_period = JOINT_S2_LIMITER_HIT_PERIOD; 
+           }
+         }
+         else
+         {
+            joint_S2.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }           
+         joint_S2_pulsed = true;
+         joint_S2.assumed_time += joint_S2.current_period;   
+       }
+       break;
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:
+     {
+       if (++joint_S2.discrete_time - joint_S2.assumed_time > joint_S2.current_period)      
+       {      
+         if (joint_S2.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO3_DIR, HIGH);
+           digitalWrite(PIN_MOTO3_PUL, HIGH);
+           --joint_S2.total_motion_steps;
+         }
+         else if (joint_S2.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO3_DIR, LOW);
+           digitalWrite(PIN_MOTO3_PUL, HIGH);        
+           ++joint_S2.total_motion_steps;
+         }
+         else
+         {
+           joint_S2.state = JOINT_STATE_HOLDING;
+           --active_joints_count;
+         }
+         joint_S2_pulsed = true;
+         joint_S2.assumed_time += joint_S2.current_period;
+       }      
+       break;      
+     }
+     default:
+     {
+        break;
+     }
+   }
+   
+   
+   switch (joint_E1.state)
+   {
+     case JOINT_STATE_HOLDING:
+     {
+       if (!command_Queue_E1.empty())
+       {
+         if (active_parallel_stage == command_Queue_E1.Commands[command_Queue_E1.first].parallel_stage)
+         {
+           joint_E1.total_motion_steps = command_Queue_E1.Commands[command_Queue_E1.first].motion_steps;
+           joint_E1.current_period = JOINT_E1_TIMER_SLOW_PERIOD;
+           joint_E1.state = JOINT_STATE_MOVING_FORWARD;
+
+           joint_E1.discrete_time = 0;
+           joint_E1.assumed_time = 0.0;
+           joint_E1.total_steps_made = 0;
+
+           command_Queue_E1.dequeue_Command();
+           ++active_joints_count;
+
+           main_state = MAIN_STATE_ACTIVE;
+         }
+       }      
+       break;
+     }
+     case JOINT_STATE_MOVING_FORWARD:
+     {
+       if (++joint_E1.discrete_time - joint_E1.assumed_time > joint_E1.current_period)
+       {      
+         if (joint_E1.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO5_DIR, HIGH);
+           digitalWrite(PIN_MOTO5_PUL, HIGH);
+           --joint_E1.total_motion_steps;
+           ++joint_E1.total_steps_made;
+
+           if (joint_E1_limiter_A == HIGH)
+           {
+             joint_E1.state = JOINT_STATE_HITTING_LIMITER;
+             joint_E1.limiter_hit_period = JOINT_E1_LIMITER_HIT_PERIOD;
+             joint_E1.limiter_hit_count = 1;
+           }
+         }
+         else if (joint_E1.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO5_DIR, LOW);
+           digitalWrite(PIN_MOTO5_PUL, HIGH);        
+           ++joint_E1.total_motion_steps;
+           ++joint_E1.total_steps_made;
+
+           if (joint_E1_limiter_B == HIGH)
+           {
+             joint_E1.state = JOINT_STATE_HITTING_LIMITER;           
+             joint_E1.limiter_hit_period = JOINT_E1_LIMITER_HIT_PERIOD;
+             joint_E1.limiter_hit_count = 1;           
+           }
+         }
+         else
+         {
+            joint_E1.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }
+         joint_E1_pulsed = true;
+         joint_E1.assumed_time += joint_E1.current_period;         
+       }
+       break;
+     }
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (++joint_E1.discrete_time - joint_E1.assumed_time > joint_E1.current_period)
+       {      
+         if (--joint_E1.limiter_hit_period <= 0)
+         {
+           joint_E1.state = JOINT_STATE_MOVING_FORWARD;
+         }
+       
+         if (joint_E1.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO5_DIR, HIGH);
+           digitalWrite(PIN_MOTO5_PUL, HIGH);
+           --joint_E1.total_motion_steps;
+           ++joint_E1.total_steps_made;
+
+           if (joint_E1_limiter_A == HIGH)
+           {
+             if (++joint_E1.limiter_hit_count >= JOINT_E1_LIMITER_HIT_TRESHOLD)
+             {
+               joint_E1.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_E1.total_motion_steps = -JOINT_E1_AWAY_LIMITER_STEPS;
+               joint_E1.current_period = JOINT_E1_TIMER_SLOW_PERIOD;
+             }
+             joint_E1.limiter_hit_period = JOINT_E1_LIMITER_HIT_PERIOD;
+           }
+         }
+         else if (joint_E1.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO5_DIR, LOW);
+           digitalWrite(PIN_MOTO5_PUL, HIGH);        
+           ++joint_E1.total_motion_steps;
+           ++joint_E1.total_steps_made;
+
+           if (joint_E1_limiter_B == HIGH)
+           {
+             if (++joint_E1.limiter_hit_count >= JOINT_E1_LIMITER_HIT_TRESHOLD)
+             {
+               joint_E1.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_E1.total_motion_steps = JOINT_E1_AWAY_LIMITER_STEPS;
+               joint_E1.current_period = JOINT_E1_TIMER_SLOW_PERIOD;
+             }
+             joint_E1.limiter_hit_period = JOINT_E1_LIMITER_HIT_PERIOD; 
+           }
+         }
+         else
+         {
+            joint_E1.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }           
+         joint_E1_pulsed = true;
+         joint_E1.assumed_time += joint_E1.current_period;   
+       }
+       break;
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:
+     {
+       if (++joint_E1.discrete_time - joint_E1.assumed_time > joint_E1.current_period)      
+       {      
+         if (joint_E1.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO5_DIR, HIGH);
+           digitalWrite(PIN_MOTO5_PUL, HIGH);
+           --joint_E1.total_motion_steps;
+         }
+         else if (joint_E1.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO5_DIR, LOW);
+           digitalWrite(PIN_MOTO5_PUL, HIGH);        
+           ++joint_E1.total_motion_steps;
+         }
+         else
+         {
+           joint_E1.state = JOINT_STATE_HOLDING;
+           --active_joints_count;
+         }
+         joint_E1_pulsed = true;
+         joint_E1.assumed_time += joint_E1.current_period;
+       }      
+       break;      
+     }
+     default:
+     {
+        break;
+     }
+   }
+
+
+   switch (joint_E2.state)
+   {
+     case JOINT_STATE_HOLDING:
+     {
+       if (!command_Queue_E2.empty())
+       {
+         if (active_parallel_stage == command_Queue_E2.Commands[command_Queue_E2.first].parallel_stage)
+         {
+           joint_E2.total_motion_steps = command_Queue_E2.Commands[command_Queue_E2.first].motion_steps;
+           joint_E2.current_period = JOINT_E2_TIMER_SLOW_PERIOD;
+           joint_E2.state = JOINT_STATE_MOVING_FORWARD;
+
+           joint_E2.discrete_time = 0;
+           joint_E2.assumed_time = 0.0;
+           joint_E2.total_steps_made = 0;
+
+           command_Queue_E2.dequeue_Command();
+           ++active_joints_count;
+
+           main_state = MAIN_STATE_ACTIVE;
+         }
+       }      
+       break;
+     }
+     case JOINT_STATE_MOVING_FORWARD:
+     {
+       if (++joint_E2.discrete_time - joint_E2.assumed_time > joint_E2.current_period)
+       {      
+         if (joint_E2.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO4_DIR, HIGH);
+           digitalWrite(PIN_MOTO4_PUL, HIGH);
+           --joint_E2.total_motion_steps;
+           ++joint_E2.total_steps_made;
+
+           if (joint_E2_limiter_A == HIGH)
+           {
+             joint_E2.state = JOINT_STATE_HITTING_LIMITER;
+             joint_E2.limiter_hit_period = JOINT_E2_LIMITER_HIT_PERIOD;
+             joint_E2.limiter_hit_count = 1;
+           }
+         }
+         else if (joint_E2.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO4_DIR, LOW);
+           digitalWrite(PIN_MOTO4_PUL, HIGH);        
+           ++joint_E2.total_motion_steps;
+           ++joint_E2.total_steps_made;
+
+           if (joint_E2_limiter_B == HIGH)
+           {
+             joint_E2.state = JOINT_STATE_HITTING_LIMITER;           
+             joint_E2.limiter_hit_period = JOINT_E2_LIMITER_HIT_PERIOD;
+             joint_E2.limiter_hit_count = 1;           
+           }
+         }
+         else
+         {
+            joint_E2.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }
+         joint_E2_pulsed = true;
+         joint_E2.assumed_time += joint_E2.current_period;         
+       }
+       break;
+     }
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (++joint_E2.discrete_time - joint_E2.assumed_time > joint_E2.current_period)
+       {      
+         if (--joint_E2.limiter_hit_period <= 0)
+         {
+           joint_E2.state = JOINT_STATE_MOVING_FORWARD;
+         }
+       
+         if (joint_E2.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO4_DIR, HIGH);
+           digitalWrite(PIN_MOTO4_PUL, HIGH);
+           --joint_E2.total_motion_steps;
+           ++joint_E2.total_steps_made;
+
+           if (joint_E2_limiter_A == HIGH)
+           {
+             if (++joint_E2.limiter_hit_count >= JOINT_E2_LIMITER_HIT_TRESHOLD)
+             {
+               joint_E2.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_E2.total_motion_steps = -JOINT_E2_AWAY_LIMITER_STEPS;
+               joint_E2.current_period = JOINT_E2_TIMER_SLOW_PERIOD;
+             }
+             joint_E2.limiter_hit_period = JOINT_E2_LIMITER_HIT_PERIOD;
+           }
+         }
+         else if (joint_E2.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO4_DIR, LOW);
+           digitalWrite(PIN_MOTO4_PUL, HIGH);        
+           ++joint_E2.total_motion_steps;
+           ++joint_E2.total_steps_made;
+
+           if (joint_E2_limiter_B == HIGH)
+           {
+             if (++joint_E2.limiter_hit_count >= JOINT_E2_LIMITER_HIT_TRESHOLD)
+             {
+               joint_E2.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_E2.total_motion_steps = JOINT_E2_AWAY_LIMITER_STEPS;
+               joint_E2.current_period = JOINT_E2_TIMER_SLOW_PERIOD;
+             }
+             joint_E2.limiter_hit_period = JOINT_E2_LIMITER_HIT_PERIOD; 
+           }
+         }
+         else
+         {
+            joint_E2.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }           
+         joint_E2_pulsed = true;
+         joint_E2.assumed_time += joint_E2.current_period;   
+       }
+       break;
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:
+     {
+       if (++joint_E2.discrete_time - joint_E2.assumed_time > joint_E2.current_period)      
+       {      
+         if (joint_E2.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO4_DIR, HIGH);
+           digitalWrite(PIN_MOTO4_PUL, HIGH);
+           --joint_E2.total_motion_steps;
+         }
+         else if (joint_E2.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO4_DIR, LOW);
+           digitalWrite(PIN_MOTO4_PUL, HIGH);        
+           ++joint_E2.total_motion_steps;
+         }
+         else
+         {
+           joint_E2.state = JOINT_STATE_HOLDING;
+           --active_joints_count;
+         }
+         joint_E2_pulsed = true;
+         joint_E2.assumed_time += joint_E2.current_period;
+       }      
+       break;      
+     }
+     default:
+     {
+        break;
+     }
+   }
+
+   
+   switch (joint_W1.state)
+   {
+     case JOINT_STATE_HOLDING:
+     {      
+       if (!command_Queue_W1.empty())
+       {
+         if (active_parallel_stage == command_Queue_W1.Commands[command_Queue_W1.first].parallel_stage)
+         {
+           joint_W1.total_motion_steps = command_Queue_W1.Commands[command_Queue_W1.first].motion_steps;
+           joint_W1.current_period = JOINT_W1_TIMER_SLOW_PERIOD;
+           joint_W1.state = JOINT_STATE_MOVING_FORWARD;
+
+           joint_W1.discrete_time = 0;
+           joint_W1.assumed_time = 0.0;
+           joint_W1.total_steps_made = 0;
+
+           command_Queue_W1.dequeue_Command();
+           ++active_joints_count;
+
+           main_state = MAIN_STATE_ACTIVE;
+         }
+       }      
+       break;
+     }
+     case JOINT_STATE_MOVING_FORWARD:
+     {
+       if (++joint_W1.discrete_time - joint_W1.assumed_time > joint_W1.current_period)
+       {      
+         if (joint_W1.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO2_DIR, HIGH);
+           digitalWrite(PIN_MOTO2_PUL, HIGH);
+           --joint_W1.total_motion_steps;
+           ++joint_W1.total_steps_made;
+
+           if (joint_W1_limiter_A == HIGH)
+           {
+             joint_W1.state = JOINT_STATE_HITTING_LIMITER;
+             joint_W1.limiter_hit_period = JOINT_W1_LIMITER_HIT_PERIOD;
+             joint_W1.limiter_hit_count = 1;
+           }
+         }
+         else if (joint_W1.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO2_DIR, LOW);
+           digitalWrite(PIN_MOTO2_PUL, HIGH);        
+           ++joint_W1.total_motion_steps;
+           ++joint_W1.total_steps_made;
+
+           if (joint_W1_limiter_B == HIGH)
+           {
+             joint_W1.state = JOINT_STATE_HITTING_LIMITER;           
+             joint_W1.limiter_hit_period = JOINT_W1_LIMITER_HIT_PERIOD;
+             joint_W1.limiter_hit_count = 1;           
+           }
+         }
+         else
+         {
+            joint_W1.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }
+         joint_W1_pulsed = true;
+         joint_W1.assumed_time += joint_W1.current_period;         
+       }
+       break;
+     }
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (++joint_W1.discrete_time - joint_W1.assumed_time > joint_W1.current_period)
+       {      
+         if (--joint_W1.limiter_hit_period <= 0)
+         {
+           joint_W1.state = JOINT_STATE_MOVING_FORWARD;
+         }
+       
+         if (joint_W1.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO2_DIR, HIGH);
+           digitalWrite(PIN_MOTO2_PUL, HIGH);
+           --joint_W1.total_motion_steps;
+           ++joint_W1.total_steps_made;
+
+           if (joint_W1_limiter_A == HIGH)
+           {
+             if (++joint_W1.limiter_hit_count >= JOINT_W1_LIMITER_HIT_TRESHOLD)
+             {
+               joint_W1.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_W1.total_motion_steps = -JOINT_W1_AWAY_LIMITER_STEPS;
+               joint_W1.current_period = JOINT_W1_TIMER_SLOW_PERIOD;
+             }
+             joint_W1.limiter_hit_period = JOINT_W1_LIMITER_HIT_PERIOD;
+           }
+         }
+         else if (joint_W1.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO2_DIR, LOW);
+           digitalWrite(PIN_MOTO2_PUL, HIGH);        
+           ++joint_W1.total_motion_steps;
+           ++joint_W1.total_steps_made;
+
+           if (joint_W1_limiter_B == HIGH)
+           {
+             if (++joint_W1.limiter_hit_count >= JOINT_W1_LIMITER_HIT_TRESHOLD)
+             {
+               joint_W1.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_W1.total_motion_steps = JOINT_W1_AWAY_LIMITER_STEPS;
+               joint_W1.current_period = JOINT_W1_TIMER_SLOW_PERIOD;
+             }
+             joint_W1.limiter_hit_period = JOINT_W1_LIMITER_HIT_PERIOD; 
+           }
+         }
+         else
+         {
+            joint_W1.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }           
+         joint_W1_pulsed = true;
+         joint_W1.assumed_time += joint_W1.current_period;   
+       }
+       break;
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:
+     {
+       if (++joint_W1.discrete_time - joint_W1.assumed_time > joint_W1.current_period)      
+       {      
+         if (joint_W1.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO2_DIR, HIGH);
+           digitalWrite(PIN_MOTO2_PUL, HIGH);
+           --joint_W1.total_motion_steps;
+         }
+         else if (joint_W1.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO2_DIR, LOW);
+           digitalWrite(PIN_MOTO2_PUL, HIGH);        
+           ++joint_W1.total_motion_steps;
+         }
+         else
+         {
+           joint_W1.state = JOINT_STATE_HOLDING;
+           --active_joints_count;
+         }
+         joint_W1_pulsed = true;
+         joint_W1.assumed_time += joint_W1.current_period;
+       }      
+       break;      
+     }
+     default:
+     {
+        break;
+     }
+   }
+
+  
+   switch (joint_W2.state)
+   {
+     case JOINT_STATE_HOLDING:
+     {      
+       if (!command_Queue_W2.empty())
+       {
+         if (active_parallel_stage == command_Queue_W2.Commands[command_Queue_W2.first].parallel_stage)
+         {
+           joint_W2.total_motion_steps = command_Queue_W2.Commands[command_Queue_W2.first].motion_steps;
+           joint_W2.current_period = JOINT_W2_TIMER_SLOW_PERIOD;
+           joint_W2.state = JOINT_STATE_MOVING_FORWARD;
+
+           joint_W2.discrete_time = 0;
+           joint_W2.assumed_time = 0.0;
+           joint_W2.total_steps_made = 0;
+
+           command_Queue_W2.dequeue_Command();
+           ++active_joints_count;
+
+           main_state = MAIN_STATE_ACTIVE;
+         }
+       }      
+       break;
+     }
+     case JOINT_STATE_MOVING_FORWARD:
+     {
+       if (++joint_W2.discrete_time - joint_W2.assumed_time > joint_W2.current_period)
+       {      
+         if (joint_W2.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO7_DIR, HIGH);
+           digitalWrite(PIN_MOTO7_PUL, HIGH);
+           --joint_W2.total_motion_steps;
+           ++joint_W2.total_steps_made;
+
+           if (joint_W2_limiter_A == HIGH)
+           {
+             joint_W2.state = JOINT_STATE_HITTING_LIMITER;
+             joint_W2.limiter_hit_period = JOINT_W2_LIMITER_HIT_PERIOD;
+             joint_W2.limiter_hit_count = 1;
+           }
+         }
+         else if (joint_W2.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO7_DIR, LOW);
+           digitalWrite(PIN_MOTO7_PUL, HIGH);        
+           ++joint_W2.total_motion_steps;
+           ++joint_W2.total_steps_made;
+
+           if (joint_W2_limiter_B == HIGH)
+           {
+             joint_W2.state = JOINT_STATE_HITTING_LIMITER;           
+             joint_W2.limiter_hit_period = JOINT_W2_LIMITER_HIT_PERIOD;
+             joint_W2.limiter_hit_count = 1;           
+           }
+         }
+         else
+         {
+            joint_W2.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }
+         joint_W2_pulsed = true;
+         joint_W2.assumed_time += joint_W2.current_period;         
+       }
+       break;
+     }
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (++joint_W2.discrete_time - joint_W2.assumed_time > joint_W2.current_period)
+       {      
+         if (--joint_W2.limiter_hit_period <= 0)
+         {
+           joint_W2.state = JOINT_STATE_MOVING_FORWARD;
+         }
+       
+         if (joint_W2.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO7_DIR, HIGH);
+           digitalWrite(PIN_MOTO7_PUL, HIGH);
+           --joint_W2.total_motion_steps;
+           ++joint_W2.total_steps_made;
+
+           if (joint_W2_limiter_A == HIGH)
+           {
+             if (++joint_W2.limiter_hit_count >= JOINT_W2_LIMITER_HIT_TRESHOLD)
+             {
+               joint_W2.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_W2.total_motion_steps = -JOINT_W2_AWAY_LIMITER_STEPS;
+               joint_W2.current_period = JOINT_W2_TIMER_SLOW_PERIOD;
+             }
+             joint_W2.limiter_hit_period = JOINT_W2_LIMITER_HIT_PERIOD;
+           }
+         }
+         else if (joint_W2.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO7_DIR, LOW);
+           digitalWrite(PIN_MOTO7_PUL, HIGH);        
+           ++joint_W2.total_motion_steps;
+           ++joint_W2.total_steps_made;
+
+           if (joint_W2_limiter_B == HIGH)
+           {
+             if (++joint_W2.limiter_hit_count >= JOINT_W2_LIMITER_HIT_TRESHOLD)
+             {
+               joint_W2.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_W2.total_motion_steps = JOINT_W2_AWAY_LIMITER_STEPS;
+               joint_W2.current_period = JOINT_W2_TIMER_SLOW_PERIOD;
+             }
+             joint_W2.limiter_hit_period = JOINT_W2_LIMITER_HIT_PERIOD; 
+           }
+         }
+         else
+         {
+            joint_W2.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }           
+         joint_W2_pulsed = true;
+         joint_W2.assumed_time += joint_W2.current_period;   
+       }
+       break;
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:
+     {
+       if (++joint_W2.discrete_time - joint_W2.assumed_time > joint_W2.current_period)      
+       {      
+         if (joint_W2.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO7_DIR, HIGH);
+           digitalWrite(PIN_MOTO7_PUL, HIGH);
+           --joint_W2.total_motion_steps;
+         }
+         else if (joint_W2.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO7_DIR, LOW);
+           digitalWrite(PIN_MOTO7_PUL, HIGH);        
+           ++joint_W2.total_motion_steps;
+         }
+         else
+         {
+           joint_W2.state = JOINT_STATE_HOLDING;
+           --active_joints_count;
+         }
+         joint_W2_pulsed = true;
+         joint_W2.assumed_time += joint_W2.current_period;
+       }      
+       break;      
+     }
+     default:
+     {
+        break;
+     }
+   }
+   
+   switch (joint_G.state)
+   {
+     case JOINT_STATE_HOLDING:
+     {      
+       if (!command_Queue_G.empty())
+       {
+         if (active_parallel_stage == command_Queue_G.Commands[command_Queue_G.first].parallel_stage)
+         {
+           joint_G.total_motion_steps = command_Queue_G.Commands[command_Queue_G.first].motion_steps;
+           joint_G.current_period = JOINT_G_TIMER_SLOW_PERIOD;
+           joint_G.state = JOINT_STATE_MOVING_FORWARD;
+
+           joint_G.discrete_time = 0;
+           joint_G.assumed_time = 0.0;
+           joint_G.total_steps_made = 0;
+
+           command_Queue_G.dequeue_Command();
+           ++active_joints_count;
+
+           main_state = MAIN_STATE_ACTIVE;           
+         }      
+       }
+       break;
+     }
+     case JOINT_STATE_MOVING_FORWARD:
+     {
+       if (++joint_G.discrete_time - joint_G.assumed_time > joint_G.current_period)
+       {      
+         if (joint_G.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO1_DIR, HIGH);
+           digitalWrite(PIN_MOTO1_PUL, HIGH);
+           --joint_G.total_motion_steps;
+           ++joint_G.total_steps_made;
+
+           if (joint_G_limiter_A == HIGH)
+           {
+             joint_G.state = JOINT_STATE_HITTING_LIMITER;
+             joint_G.limiter_hit_period = JOINT_G_LIMITER_HIT_PERIOD;
+             joint_G.limiter_hit_count = 1;
+           }
+         }
+         else if (joint_G.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO1_DIR, LOW);
+           digitalWrite(PIN_MOTO1_PUL, HIGH);        
+           ++joint_G.total_motion_steps;
+           ++joint_G.total_steps_made;
+
+           if (joint_G_limiter_B == HIGH)
+           {
+             joint_G.state = JOINT_STATE_HITTING_LIMITER;           
+             joint_G.limiter_hit_period = JOINT_G_LIMITER_HIT_PERIOD;
+             joint_G.limiter_hit_count = 1;           
+           }
+         }
+         else
+         {
+            joint_G.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }
+         joint_G_pulsed = true;
+         joint_G.assumed_time += joint_G.current_period;         
+       }
+       break;
+     }
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (++joint_G.discrete_time - joint_G.assumed_time > joint_G.current_period)
+       {      
+         if (--joint_G.limiter_hit_period <= 0)
+         {
+           joint_G.state = JOINT_STATE_MOVING_FORWARD;
+         }
+       
+         if (joint_G.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO1_DIR, HIGH);
+           digitalWrite(PIN_MOTO1_PUL, HIGH);
+           --joint_G.total_motion_steps;
+           ++joint_G.total_steps_made;
+
+           if (joint_G_limiter_A == HIGH)
+           {
+             if (++joint_G.limiter_hit_count >= JOINT_G_LIMITER_HIT_TRESHOLD)
+             {
+               joint_G.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_G.total_motion_steps = -JOINT_G_AWAY_LIMITER_STEPS;
+               joint_G.current_period = JOINT_G_TIMER_SLOW_PERIOD;
+             }
+             joint_G.limiter_hit_period = JOINT_G_LIMITER_HIT_PERIOD;
+           }
+         }
+         else if (joint_G.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO1_DIR, LOW);
+           digitalWrite(PIN_MOTO1_PUL, HIGH);        
+           ++joint_G.total_motion_steps;
+           ++joint_G.total_steps_made;
+
+           if (joint_G_limiter_B == HIGH)
+           {
+             if (++joint_G.limiter_hit_count >= JOINT_G_LIMITER_HIT_TRESHOLD)
+             {
+               joint_G.state = JOINT_STATE_MOVING_AWAY_LIMITER;
+               joint_G.total_motion_steps = JOINT_G_AWAY_LIMITER_STEPS;
+               joint_G.current_period = JOINT_G_TIMER_SLOW_PERIOD;
+             }
+             joint_G.limiter_hit_period = JOINT_G_LIMITER_HIT_PERIOD; 
+           }
+         }
+         else
+         {
+            joint_G.state = JOINT_STATE_HOLDING;
+            --active_joints_count;
+         }           
+         joint_G_pulsed = true;
+         joint_G.assumed_time += joint_G.current_period;   
+       }
+       break;
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:
+     {
+       if (++joint_G.discrete_time - joint_G.assumed_time > joint_G.current_period)      
+       {      
+         if (joint_G.total_motion_steps > 0)
+         {
+           digitalWrite(PIN_MOTO1_DIR, HIGH);
+           digitalWrite(PIN_MOTO1_PUL, HIGH);
+           --joint_G.total_motion_steps;
+         }
+         else if (joint_G.total_motion_steps < 0)
+         {
+           digitalWrite(PIN_MOTO1_DIR, LOW);
+           digitalWrite(PIN_MOTO1_PUL, HIGH);        
+           ++joint_G.total_motion_steps;
+         }
+         else
+         {
+           joint_G.state = JOINT_STATE_HOLDING;
+           --active_joints_count;
+         }
+         joint_G_pulsed = true;
+         joint_G.assumed_time += joint_G.current_period;
+       }      
+       break;      
+     }
+     default:
+     {
+        break;
+     }
+   }   
+   /*
+   Serial.print("Koko:");
+   Serial.print(amt_encoder1.encoder.koko);
+   Serial.print(",");   
+   Serial.print(amt_encoder2.encoder.koko);
+   Serial.print(",");
+   Serial.print(amt_encoder3.encoder.koko);
+   Serial.print(",");
+   Serial.print(amt_encoder4.encoder.koko);
+   Serial.print(",");
+   Serial.print(amt_encoder5.encoder.koko);
+   Serial.print(",");
+   Serial.print(amt_encoder6.encoder.koko);
+   Serial.print(",");
+   Serial.print(amt_encoder7.encoder.koko);
+   Serial.print("\n");
+   */
+   int position1 = amt_encoder1.read();
+   int position2 = amt_encoder2.read();
+   int position3 = amt_encoder3.read();
+   int position4 = amt_encoder4.read();
+   int position5 = amt_encoder5.read();
+   int position6 = amt_encoder6.read();
+   int position7 = amt_encoder7.read();
+  
+   Serial.print("Positions:");
+   Serial.print(position1);
+   Serial.print(" ");   
+   Serial.print(position2);
+   Serial.print(" ");
+   Serial.print(position3);
+   Serial.print(" ");         
+   Serial.print(position4);
+   Serial.print(" ");         
+   Serial.print(position5);
+   Serial.print(" ");         
+   Serial.print(position6);
+   Serial.print(" ");         
+   Serial.print(position7);
+   Serial.print(" ");         
+   Serial.print("\n");
+   
+/*
+   int val_PIN_LIMITER1_A = digitalRead(PIN_LIMITER1_A);
+   int val_PIN_LIMITER1_B = digitalRead(PIN_LIMITER1_B);
+   int val_PIN_LIMITER2_A = digitalRead(PIN_LIMITER2_A);
+   int val_PIN_LIMITER2_B = digitalRead(PIN_LIMITER2_B);
+   int val_PIN_LIMITER3_A = digitalRead(PIN_LIMITER3_A);
+   int val_PIN_LIMITER3_B = digitalRead(PIN_LIMITER3_B);   
+   int val_PIN_LIMITER4_A = digitalRead(PIN_LIMITER4_A);
+   int val_PIN_LIMITER4_B = digitalRead(PIN_LIMITER4_B);   
+   int val_PIN_LIMITER5_A = digitalRead(PIN_LIMITER5_A);
+   int val_PIN_LIMITER5_B = digitalRead(PIN_LIMITER5_B);   
+   int val_PIN_LIMITER6_A = digitalRead(PIN_LIMITER6_A);
+   int val_PIN_LIMITER6_B = digitalRead(PIN_LIMITER6_B);   
+   int val_PIN_LIMITER7_A = digitalRead(PIN_LIMITER7_A);
+   int val_PIN_LIMITER7_B = digitalRead(PIN_LIMITER7_B);   
+   int val_stop     = digitalRead(PIN_EMERGENCY_STOP);   
+   
+   
+   Serial.print("PIN_LIMITERy:");
+
+   Serial.print("1:");   
+   Serial.print(val_PIN_LIMITER1_A);
+   Serial.print(" ");
+   Serial.print(val_PIN_LIMITER1_B);
+   Serial.print("    ");
+
+   Serial.print("2:");   
+   Serial.print(val_PIN_LIMITER2_A);
+   Serial.print(" ");
+   Serial.print(val_PIN_LIMITER2_B);
+   Serial.print("    ");
+
+   Serial.print("3:");   
+   Serial.print(val_PIN_LIMITER3_A);
+   Serial.print(" ");
+   Serial.print(val_PIN_LIMITER3_B);
+   Serial.print("    ");   
+
+   Serial.print("4:");   
+   Serial.print(val_PIN_LIMITER4_A);
+   Serial.print(" ");
+   Serial.print(val_PIN_LIMITER4_B);
+   Serial.print("    "); 
+
+   Serial.print("5:");   
+   Serial.print(val_PIN_LIMITER5_A);
+   Serial.print(" ");
+   Serial.print(val_PIN_LIMITER5_B);
+   Serial.print("    ");
+
+   Serial.print("6:");   
+   Serial.print(val_PIN_LIMITER6_A);
+   Serial.print(" ");
+   Serial.print(val_PIN_LIMITER6_B);
+   Serial.print("    ");
+
+   Serial.print("7:");   
+   Serial.print(val_PIN_LIMITER7_A);
+   Serial.print(" ");
+   Serial.print(val_PIN_LIMITER7_B);
+   Serial.print("    ");
+   
+   Serial.print("\n");
+   
+   Serial.print("Emergency stop:");
+   Serial.print(val_stop);
+   Serial.print("\n");
+*/
+   delayMicroseconds(MAIN_PULSE_DELAY);
+
+
+   switch (joint_S1.state)
+   {
+     case JOINT_STATE_MOVING_FORWARD:
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (joint_S1_pulsed)
+       {      
+         digitalWrite(PIN_MOTO6_PUL, LOW);
+
+         if (joint_S1.total_steps_made >= JOINT_S1_FULL_SPEED_STEPS && abs(joint_S1.total_motion_steps) >= JOINT_S1_FULL_SPEED_STEPS)
+         {
+           joint_S1.current_period = JOINT_S1_TIMER_FAST_PERIOD;
+         }
+         else
+         {
+           joint_S1.current_period = min(JOINT_S1_TIMER_SLOW_PERIOD, JOINT_S1_TIMER_FAST_PERIOD * (JOINT_S1_FULL_SPEED_STEPS / (double)min(joint_S1.total_steps_made, abs(joint_S1.total_motion_steps))));
+         }
+       }
+       break;      
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:     
+     {
+       if (joint_S1_pulsed)
+       {      
+         digitalWrite(PIN_MOTO6_PUL, LOW);
+       }      
+     }
+     default:
+     {
+        break;
+     }
+   }   
+
+   
+   switch (joint_S2.state)
+   {
+     case JOINT_STATE_MOVING_FORWARD:
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (joint_S2_pulsed)
+       {      
+         digitalWrite(PIN_MOTO3_PUL, LOW);
+
+         if (joint_S2.total_steps_made >= JOINT_S2_FULL_SPEED_STEPS && abs(joint_S2.total_motion_steps) >= JOINT_S2_FULL_SPEED_STEPS)
+         {
+           joint_S2.current_period = JOINT_S2_TIMER_FAST_PERIOD;
+         }
+         else
+         {
+           joint_S2.current_period = min(JOINT_S2_TIMER_SLOW_PERIOD, JOINT_S2_TIMER_FAST_PERIOD * (JOINT_S2_FULL_SPEED_STEPS / (double)min(joint_S2.total_steps_made, abs(joint_S2.total_motion_steps))));
+         }
+       }
+       break;      
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:     
+     {
+       if (joint_S2_pulsed)
+       {      
+         digitalWrite(PIN_MOTO3_PUL, LOW);
+       }      
+     }
+     default:
+     {
+        break;
+     }
+   }   
+
+
+   switch (joint_E1.state)
+   {
+     case JOINT_STATE_MOVING_FORWARD:
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (joint_E1_pulsed)
+       {      
+         digitalWrite(PIN_MOTO5_PUL, LOW);
+
+         if (joint_E1.total_steps_made >= JOINT_E1_FULL_SPEED_STEPS && abs(joint_E1.total_motion_steps) >= JOINT_E1_FULL_SPEED_STEPS)
+         {
+           joint_E1.current_period = JOINT_E1_TIMER_FAST_PERIOD;
+         }
+         else
+         {
+           joint_E1.current_period = min(JOINT_E1_TIMER_SLOW_PERIOD, JOINT_E1_TIMER_FAST_PERIOD * (JOINT_E1_FULL_SPEED_STEPS / (double)min(joint_E1.total_steps_made, abs(joint_E1.total_motion_steps))));
+         }
+       }
+       break;      
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:     
+     {
+       if (joint_E1_pulsed)
+       {      
+         digitalWrite(PIN_MOTO5_PUL, LOW);
+       }      
+     }
+     default:
+     {
+        break;
+     }
+   }   
+
+   
+   switch (joint_E2.state)
+   {
+     case JOINT_STATE_MOVING_FORWARD:
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (joint_E2_pulsed)
+       {      
+         digitalWrite(PIN_MOTO4_PUL, LOW);
+
+         if (joint_E2.total_steps_made >= JOINT_E2_FULL_SPEED_STEPS && abs(joint_E2.total_motion_steps) >= JOINT_E2_FULL_SPEED_STEPS)
+         {
+           joint_E2.current_period = JOINT_E2_TIMER_FAST_PERIOD;
+         }
+         else
+         {
+           joint_E2.current_period = min(JOINT_E2_TIMER_SLOW_PERIOD, JOINT_E2_TIMER_FAST_PERIOD * (JOINT_E2_FULL_SPEED_STEPS / (double)min(joint_E2.total_steps_made, abs(joint_E2.total_motion_steps))));
+         }
+       }
+       break;      
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:     
+     {
+       if (joint_E2_pulsed)
+       {      
+         digitalWrite(PIN_MOTO4_PUL, LOW);
+       }      
+     }
+     default:
+     {
+        break;
+     }
+   }   
+
+   
+   switch (joint_W1.state)
+   {
+     case JOINT_STATE_MOVING_FORWARD:
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (joint_W1_pulsed)
+       {      
+         digitalWrite(PIN_MOTO2_PUL, LOW);
+
+         if (joint_W1.total_steps_made >= JOINT_W1_FULL_SPEED_STEPS && abs(joint_W1.total_motion_steps) >= JOINT_W1_FULL_SPEED_STEPS)
+         {
+           joint_W1.current_period = JOINT_W1_TIMER_FAST_PERIOD;
+         }
+         else
+         {
+           joint_W1.current_period = min(JOINT_W1_TIMER_SLOW_PERIOD, JOINT_W1_TIMER_FAST_PERIOD * (JOINT_W1_FULL_SPEED_STEPS / (double)min(joint_W1.total_steps_made, abs(joint_W1.total_motion_steps))));
+         }
+       }
+       break;      
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:     
+     {
+       if (joint_W1_pulsed)
+       {      
+         digitalWrite(PIN_MOTO2_PUL, LOW);
+       }      
+     }
+     default:
+     {
+        break;
+     }
+   }   
+
+   switch (joint_W2.state)
+   {
+     case JOINT_STATE_MOVING_FORWARD:
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (joint_W2_pulsed)
+       {      
+         digitalWrite(PIN_MOTO7_PUL, LOW);
+
+         if (joint_W2.total_steps_made >= JOINT_W2_FULL_SPEED_STEPS && abs(joint_W2.total_motion_steps) >= JOINT_W2_FULL_SPEED_STEPS)
+         {
+           joint_W2.current_period = JOINT_W2_TIMER_FAST_PERIOD;
+         }
+         else
+         {
+           joint_W2.current_period = min(JOINT_W2_TIMER_SLOW_PERIOD, JOINT_W2_TIMER_FAST_PERIOD * (JOINT_W2_FULL_SPEED_STEPS / (double)min(joint_W2.total_steps_made, abs(joint_W2.total_motion_steps))));
+         }
+       }
+       break;      
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:     
+     {
+       if (joint_W2_pulsed)
+       {      
+         digitalWrite(PIN_MOTO7_PUL, LOW);
+       }      
+     }
+     default:
+     {
+        break;
+     }
+   }   
+   
+      
+   switch (joint_G.state)
+   {
+     case JOINT_STATE_MOVING_FORWARD:
+     case JOINT_STATE_HITTING_LIMITER:
+     {
+       if (joint_G_pulsed)
+       {      
+         digitalWrite(PIN_MOTO1_PUL, LOW);
+
+         if (joint_G.total_steps_made >= JOINT_G_FULL_SPEED_STEPS && abs(joint_G.total_motion_steps) >= JOINT_G_FULL_SPEED_STEPS)
+         {
+           joint_G.current_period = JOINT_G_TIMER_FAST_PERIOD;
+         }
+         else
+         {
+           joint_G.current_period = min(JOINT_G_TIMER_SLOW_PERIOD, JOINT_G_TIMER_FAST_PERIOD * (JOINT_G_FULL_SPEED_STEPS / (double)min(joint_G.total_steps_made, abs(joint_G.total_motion_steps))));
+         }
+       }
+       break;      
+     }
+     case JOINT_STATE_MOVING_AWAY_LIMITER:     
+     {
+       if (joint_G_pulsed)
+       {      
+         digitalWrite(PIN_MOTO1_PUL, LOW);
+       }      
+     }
+     default:
+     {
+        break;
+     }
+   } 
+            
+   delayMicroseconds(MAIN_PULSE_DELAY);    
+}
