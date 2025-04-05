@@ -3,7 +3,7 @@
 /*                                                                            */
 /*                    RR1 rev.2 Firmware [for Arduino DUE]                    */
 /*                                                                            */
-/*                  (C) Copyright 2023 - 2024 Pavel Surynek                   */
+/*                  (C) Copyright 2023 - 2025 Pavel Surynek                   */
 /*                                                                            */
 /*                http://www.surynek.net | <pavel@surynek.net>                */
 /*       http://users.fit.cvut.cz/surynek | <pavel.surynek@fit.cvut.cz>       */
@@ -121,6 +121,7 @@ Encoder amt_encoder7(PIN_ENCODER_A7, PIN_ENCODER_B7);
 
 const int MAIN_PULSE_DELAY = 350;
 
+
 enum JointID
 {
   JOINT_S1,
@@ -204,16 +205,23 @@ const int JOINT_S1_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_S1_LIMITER_HIT_PERIOD = 16;
 const int JOINT_S1_AWAY_LIMITER_STEPS = 32;
 
-/*
+/* rev.1
   const double JOINT_S2_TIMER_SLOW_PERIOD = 32.0;
   const double JOINT_S2_TIMER_FAST_PERIOD = 16.0;
   const int JOINT_S2_FULL_SPEED_STEPS = 64;
 */
 
-// modified for rev.2
-const double JOINT_S2_TIMER_SLOW_PERIOD = 68.0;
-const double JOINT_S2_TIMER_FAST_PERIOD = 4.0;
-const int JOINT_S2_FULL_SPEED_STEPS = 128;
+const double SPEED_UNDEFINED = -1.0;
+
+const double JOINT_S2_TIMER_STOP_PERIOD = 65536.0;
+const double JOINT_S2_TIMER_SLOW_PERIOD = 64.0;
+const double JOINT_S2_TIMER_FAST_PERIOD = 3.0;
+const double JOINT_S2_SLOW_SPEED = (1 / JOINT_S2_TIMER_SLOW_PERIOD);
+const double JOINT_S2_FAST_SPEED = (1 / JOINT_S2_TIMER_FAST_PERIOD);
+
+const int JOINT_S2_STEPS_TO_FAST_SPEED = 128;
+const double JOINT_S2_TIME_TO_FAST_SPEED = JOINT_S2_STEPS_TO_FAST_SPEED / ((1 + 0.5 * PI) * JOINT_S2_FAST_SPEED);
+
 
 const int JOINT_S2_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_S2_LIMITER_HIT_PERIOD = 16;
@@ -264,6 +272,61 @@ const int JOINT_G_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_G_LIMITER_HIT_PERIOD = 16;
 const int JOINT_G_AWAY_LIMITER_STEPS = 32;
 
+
+double calc_Period2Speed(double timer_period)
+{
+  return (1 / timer_period);
+}
+
+
+double calc_Speed2Period(double joint_speed)
+{
+  return (1 / joint_speed);
+}
+
+
+int calc_TimeToSpeed(double final_speed, double steps_to_speed)
+{
+  return steps_to_speed / ((1 + 0.5 * PI) * final_speed);
+}
+
+
+int calc_FlatMotionTime(double final_speed, double total_steps)
+{
+  return total_steps * calc_Speed2Period(final_speed);
+}
+
+
+int calc_SmoothMotionTimes(double final_speed, double total_steps, double steps_to_speed, int &time_to_speed)
+{
+  time_to_speed = calc_TimeToSpeed(final_speed, steps_to_speed);
+  int time_on_flat_speed = calc_FlatMotionTime(final_speed, total_steps - 2 * steps_to_speed);
+
+  return time_to_speed + time_on_flat_speed;
+}
+
+
+double calc_CurrentSpeed(int time, int time_to_speed, double final_speed)
+{
+  return (sin(time / (double)time_to_speed) *  final_speed);
+}
+
+
+int calc_SmoothStepsToSpeed(int total_motion_steps, double top_speed, int motion_steps_to_top_speed, double &final_speed)
+{
+  if (total_motion_steps > 2 * motion_steps_to_top_speed)
+  {
+    final_speed = top_speed;
+    return motion_steps_to_top_speed;
+  }
+  else
+  {
+    final_speed = (double)total_motion_steps / (2 * motion_steps_to_top_speed);
+    return (total_motion_steps / 2);
+  }
+}
+
+
 enum JointState
 {
   JOINT_STATE_STEPPER_HOLDING,
@@ -282,6 +345,10 @@ struct Joint
     : state(JOINT_STATE_STEPPER_HOLDING)
     , limiter_hit_period(0)
     , limiter_hit_count(0)
+    , time_to_speed(0)
+    , steps_to_speed(0)
+    , total_motion_time(0)
+    , final_speed(SPEED_UNDEFINED)
     , motion_steps_remaining(0)
     , total_steps_made(0)
     , executed_motion_steps(0)
@@ -292,8 +359,13 @@ struct Joint
   JointState state;
 
   int discrete_time;
+  int total_motion_time;
   double assumed_time;
   double current_period;
+
+  int time_to_speed;
+  int steps_to_speed;
+  double final_speed;
 
   int motion_steps_remaining;
   int total_steps_made;
@@ -2441,31 +2513,22 @@ void loop()
   {
       case JOINT_STATE_STEPPER_MOVING_FORWARD:
       case JOINT_STATE_STEPPER_HITTING_LIMITER:
-      {
+      {       
+        if (joint_S2.discrete_time <= joint_S2.time_to_speed)
+        {
+          joint_S2.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_S2.discrete_time, joint_S2.time_to_speed, joint_S2.final_speed));
+        }
+        else
+        {
+          if (joint_S2.discrete_time >= joint_S2.total_motion_time - joint_S2.time_to_speed)
+          {
+            joint_S2.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_S2.total_motion_time - joint_S2.discrete_time, joint_S2.time_to_speed, joint_S2.final_speed));
+          }
+        }        
+                
         if (joint_S2_pulsed)
         {
           digitalWrite(PIN_MOTO3_PUL, LOW);
-
-          if (joint_S2.total_steps_made <= JOINT_S2_FULL_SPEED_STEPS)
-          {
-            if (abs(joint_S2.motion_steps_remaining) >= JOINT_S2_FULL_SPEED_STEPS)
-            {
-              if (joint_S2.current_period > JOINT_S2_TIMER_FAST_PERIOD)
-              {
-                joint_S2.current_period -= 0.5;
-              }
-            }
-          }
-          else
-          {
-            if (abs(joint_S2.motion_steps_remaining) < JOINT_S2_FULL_SPEED_STEPS)
-            {
-              if (joint_S2.current_period < JOINT_S2_TIMER_SLOW_PERIOD)
-              {
-                joint_S2.current_period += 0.5;
-              }
-            }
-          }
           joint_S2_pulsed = false;
         }
         break;
@@ -2787,7 +2850,6 @@ void loop()
                 }
                 default:
                 {
-                  Serial.print("delta\n");                          
                   break;
                 }
               }
@@ -2802,8 +2864,11 @@ void loop()
                 case JOINT_STATE_STEPPER_HOLDING:
                 {
                   joint_S2.motion_steps_remaining += kbhit_J_S2_steps;
-                  joint_S2.current_period = JOINT_S2_TIMER_SLOW_PERIOD;
+                  joint_S2.current_period = JOINT_S2_TIMER_STOP_PERIOD;
                   joint_S2.state = JOINT_STATE_STEPPER_MOVING_FORWARD;
+
+                  joint_S2.steps_to_speed = calc_SmoothStepsToSpeed(joint_S2.motion_steps_remaining, JOINT_S2_FAST_SPEED, JOINT_S2_STEPS_TO_FAST_SPEED, joint_S2.final_speed);                  
+                  joint_S2.total_motion_time = calc_SmoothMotionTimes(joint_S2.final_speed, joint_S2.motion_steps_remaining, joint_S2.steps_to_speed, joint_S2.time_to_speed);
 
                   joint_S2.discrete_time = 0;
                   joint_S2.assumed_time = 0.0;
