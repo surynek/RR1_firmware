@@ -287,7 +287,7 @@ double calc_Speed2Period(double joint_speed)
 
 int calc_TimeToSpeed(double final_speed, double steps_to_speed)
 {
-  return steps_to_speed / ((1 + 0.5 * PI) * final_speed);
+  return steps_to_speed / ((1 / PI + 0.5) * final_speed);
 }
 
 
