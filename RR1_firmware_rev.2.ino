@@ -122,6 +122,8 @@ Encoder amt_encoder7(PIN_ENCODER_A7, PIN_ENCODER_B7);
 const int MAIN_PULSE_DELAY = 350;
 
 
+/*----------------------------------------------------------------------------*/
+
 enum JointID
 {
   JOINT_S1,
@@ -197,9 +199,22 @@ CommandQueue command_Queue_W2;
 CommandQueue command_Queue_G;
 
 
+/*----------------------------------------------------------------------------*/
+
+const double SPEED_UNDEFINED = -1.0;
+
+const double JOINT_S1_TIMER_STOP_PERIOD = 65536.0;
+const double JOINT_S1_TIMER_SLOW_PERIOD = 32.0;
+const double JOINT_S1_TIMER_FAST_PERIOD = 8.0;
+const double JOINT_S1_SLOW_SPEED = (1 / JOINT_S1_TIMER_SLOW_PERIOD);
+const double JOINT_S1_FAST_SPEED = (1 / JOINT_S1_TIMER_FAST_PERIOD);
+const int JOINT_S1_STEPS_TO_FAST_SPEED = 128;
+
+/*
 const double JOINT_S1_TIMER_SLOW_PERIOD = 32.0;
 const double JOINT_S1_TIMER_FAST_PERIOD = 8.0;
 const int JOINT_S1_FULL_SPEED_STEPS = 64;
+*/
 
 const int JOINT_S1_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_S1_LIMITER_HIT_PERIOD = 16;
@@ -211,62 +226,95 @@ const int JOINT_S1_AWAY_LIMITER_STEPS = 32;
   const int JOINT_S2_FULL_SPEED_STEPS = 64;
 */
 
-const double SPEED_UNDEFINED = -1.0;
-
 const double JOINT_S2_TIMER_STOP_PERIOD = 65536.0;
 const double JOINT_S2_TIMER_SLOW_PERIOD = 64.0;
 const double JOINT_S2_TIMER_FAST_PERIOD = 3.0;
 const double JOINT_S2_SLOW_SPEED = (1 / JOINT_S2_TIMER_SLOW_PERIOD);
 const double JOINT_S2_FAST_SPEED = (1 / JOINT_S2_TIMER_FAST_PERIOD);
-
 const int JOINT_S2_STEPS_TO_FAST_SPEED = 128;
-const double JOINT_S2_TIME_TO_FAST_SPEED = JOINT_S2_STEPS_TO_FAST_SPEED / ((1 + 0.5 * PI) * JOINT_S2_FAST_SPEED);
 
 
 const int JOINT_S2_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_S2_LIMITER_HIT_PERIOD = 16;
 const int JOINT_S2_AWAY_LIMITER_STEPS = 32;
 
-
+const double JOINT_E1_TIMER_STOP_PERIOD = 65536.0;
+const double JOINT_E1_TIMER_SLOW_PERIOD = 16.0;
+const double JOINT_E1_TIMER_FAST_PERIOD = 2.0;
+const double JOINT_E1_SLOW_SPEED = (1 / JOINT_E1_TIMER_SLOW_PERIOD);
+const double JOINT_E1_FAST_SPEED = (1 / JOINT_E1_TIMER_FAST_PERIOD);
+const int JOINT_E1_STEPS_TO_FAST_SPEED = 128;
+/*
 const double JOINT_E1_TIMER_SLOW_PERIOD = 16.0;
 const double JOINT_E1_TIMER_FAST_PERIOD = 2.0;
 const int JOINT_E1_FULL_SPEED_STEPS = 128;
+*/
 
 const int JOINT_E1_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_E1_LIMITER_HIT_PERIOD = 16;
 const int JOINT_E1_AWAY_LIMITER_STEPS = 32;
 
 
+const double JOINT_E2_TIMER_STOP_PERIOD = 65536.0;
+const double JOINT_E2_TIMER_SLOW_PERIOD = 16.0;
+const double JOINT_E2_TIMER_FAST_PERIOD = 3.0;
+const double JOINT_E2_SLOW_SPEED = (1 / JOINT_E2_TIMER_SLOW_PERIOD);
+const double JOINT_E2_FAST_SPEED = (1 / JOINT_E2_TIMER_FAST_PERIOD);
+const int JOINT_E2_STEPS_TO_FAST_SPEED = 128;
+/*
 const double JOINT_E2_TIMER_SLOW_PERIOD = 16.0;
 const double JOINT_E2_TIMER_FAST_PERIOD = 3.0;
 const int JOINT_E2_FULL_SPEED_STEPS = 128;
+*/
 
 const int JOINT_E2_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_E2_LIMITER_HIT_PERIOD = 16;
 const int JOINT_E2_AWAY_LIMITER_STEPS = 32;
 
 
+const double JOINT_W1_TIMER_STOP_PERIOD = 65536.0;
+const double JOINT_W1_TIMER_SLOW_PERIOD = 16.0;
+const double JOINT_W1_TIMER_FAST_PERIOD = 2.0;
+const double JOINT_W1_SLOW_SPEED = (1 / JOINT_W1_TIMER_SLOW_PERIOD);
+const double JOINT_W1_FAST_SPEED = (1 / JOINT_W1_TIMER_FAST_PERIOD);
+const int JOINT_W1_STEPS_TO_FAST_SPEED = 128;
+/*
 const double JOINT_W1_TIMER_SLOW_PERIOD = 16.0;
 const double JOINT_W1_TIMER_FAST_PERIOD = 2.0;
 const int JOINT_W1_FULL_SPEED_STEPS = 128;
-
+*/
 const int JOINT_W1_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_W1_LIMITER_HIT_PERIOD = 16;
 const int JOINT_W1_AWAY_LIMITER_STEPS = 32;
 
 
+const double JOINT_W2_TIMER_STOP_PERIOD = 65536.0;
+const double JOINT_W2_TIMER_SLOW_PERIOD = 16.0;
+const double JOINT_W2_TIMER_FAST_PERIOD = 2.0;
+const double JOINT_W2_SLOW_SPEED = (1 / JOINT_W2_TIMER_SLOW_PERIOD);
+const double JOINT_W2_FAST_SPEED = (1 / JOINT_W2_TIMER_FAST_PERIOD);
+const int JOINT_W2_STEPS_TO_FAST_SPEED = 128;
+/*
 const double JOINT_W2_TIMER_SLOW_PERIOD = 16.0;
 const double JOINT_W2_TIMER_FAST_PERIOD = 2.0;
 const int JOINT_W2_FULL_SPEED_STEPS = 128;
-
+*/
 const int JOINT_W2_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_W2_LIMITER_HIT_PERIOD = 16;
 const int JOINT_W2_AWAY_LIMITER_STEPS = 32;
 
 
+const double JOINT_G_TIMER_STOP_PERIOD = 65536.0;
+const double JOINT_G_TIMER_SLOW_PERIOD = 8.0;
+const double JOINT_G_TIMER_FAST_PERIOD = 2.0;
+const double JOINT_G_SLOW_SPEED = (1 / JOINT_G_TIMER_SLOW_PERIOD);
+const double JOINT_G_FAST_SPEED = (1 / JOINT_G_TIMER_FAST_PERIOD);
+const int JOINT_G_STEPS_TO_FAST_SPEED = 128;
+/*
 const double JOINT_G_TIMER_SLOW_PERIOD = 8.0;
 const double JOINT_G_TIMER_FAST_PERIOD = 2.0;
 const int JOINT_G_FULL_SPEED_STEPS = 128;
+*/
 
 const int JOINT_G_LIMITER_HIT_TRESHOLD = 4;
 const int JOINT_G_LIMITER_HIT_PERIOD = 16;
@@ -302,13 +350,13 @@ int calc_SmoothMotionTimes(double final_speed, double total_steps, double steps_
   time_to_speed = calc_TimeToSpeed(final_speed, steps_to_speed);
   int time_on_flat_speed = calc_FlatMotionTime(final_speed, total_steps - 2 * steps_to_speed);
 
-  return time_to_speed + time_on_flat_speed;
+  return 2 * time_to_speed + time_on_flat_speed;
 }
 
 
 double calc_CurrentSpeed(int time, int time_to_speed, double final_speed)
 {
-  return (sin(time / (double)time_to_speed) *  final_speed);
+  return (0.5 * (sin((time / (double)time_to_speed) * 0.5 * PI) + 1) *  final_speed);
 }
 
 
@@ -321,7 +369,7 @@ int calc_SmoothStepsToSpeed(int total_motion_steps, double top_speed, int motion
   }
   else
   {
-    final_speed = (double)total_motion_steps / (2 * motion_steps_to_top_speed);
+    final_speed = top_speed * ((double)total_motion_steps / (2 * motion_steps_to_top_speed));
     return (total_motion_steps / 2);
   }
 }
@@ -2479,18 +2527,20 @@ void loop()
       case JOINT_STATE_STEPPER_MOVING_FORWARD:
       case JOINT_STATE_STEPPER_HITTING_LIMITER:
       {
+        if (joint_S1.discrete_time <= joint_S1.time_to_speed)
+        {
+          joint_S1.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_S1.discrete_time, joint_S1.time_to_speed, joint_S1.final_speed));
+        }
+        else
+        {
+          if (joint_S1.discrete_time >= joint_S1.total_motion_time - joint_S1.time_to_speed)
+          {
+            joint_S1.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_S1.total_motion_time - joint_S1.discrete_time, joint_S1.time_to_speed, joint_S1.final_speed));
+          }
+        }                
         if (joint_S1_pulsed)
         {
           digitalWrite(PIN_MOTO6_PUL, LOW);
-
-          if (joint_S1.total_steps_made >= JOINT_S1_FULL_SPEED_STEPS && abs(joint_S1.motion_steps_remaining) >= JOINT_S1_FULL_SPEED_STEPS)
-          {
-            joint_S1.current_period = JOINT_S1_TIMER_FAST_PERIOD;
-          }
-          else
-          {
-            joint_S1.current_period = min(JOINT_S1_TIMER_SLOW_PERIOD, JOINT_S1_TIMER_FAST_PERIOD * (JOINT_S1_FULL_SPEED_STEPS / (double)min(joint_S1.total_steps_made, abs(joint_S1.motion_steps_remaining))));
-          }
           joint_S1_pulsed = false;
         }
         break;
@@ -2502,6 +2552,7 @@ void loop()
           digitalWrite(PIN_MOTO6_PUL, LOW);
           joint_S1_pulsed = false;
         }
+        break;
       }
       default:
       {
@@ -2524,8 +2575,7 @@ void loop()
           {
             joint_S2.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_S2.total_motion_time - joint_S2.discrete_time, joint_S2.time_to_speed, joint_S2.final_speed));
           }
-        }        
-                
+        }                        
         if (joint_S2_pulsed)
         {
           digitalWrite(PIN_MOTO3_PUL, LOW);
@@ -2540,6 +2590,7 @@ void loop()
           digitalWrite(PIN_MOTO3_PUL, LOW);
           joint_S2_pulsed = false;
         }
+        break;
       }
       default:
       {
@@ -2553,18 +2604,20 @@ void loop()
       case JOINT_STATE_STEPPER_MOVING_FORWARD:
       case JOINT_STATE_STEPPER_HITTING_LIMITER:
       {
+        if (joint_E1.discrete_time <= joint_E1.time_to_speed)
+        {
+          joint_E1.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_E1.discrete_time, joint_E1.time_to_speed, joint_E1.final_speed));
+        }
+        else
+        {
+          if (joint_E1.discrete_time >= joint_E1.total_motion_time - joint_E1.time_to_speed)
+          {
+            joint_E1.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_E1.total_motion_time - joint_E1.discrete_time, joint_E1.time_to_speed, joint_E1.final_speed));
+          }
+        }                                
         if (joint_E1_pulsed)
         {
           digitalWrite(PIN_MOTO5_PUL, LOW);
-
-          if (joint_E1.total_steps_made >= JOINT_E1_FULL_SPEED_STEPS && abs(joint_E1.motion_steps_remaining) >= JOINT_E1_FULL_SPEED_STEPS)
-          {
-            joint_E1.current_period = JOINT_E1_TIMER_FAST_PERIOD;
-          }
-          else
-          {
-            joint_E1.current_period = min(JOINT_E1_TIMER_SLOW_PERIOD, JOINT_E1_TIMER_FAST_PERIOD * (JOINT_E1_FULL_SPEED_STEPS / (double)min(joint_E1.total_steps_made, abs(joint_E1.motion_steps_remaining))));
-          }
           joint_E1_pulsed = false;
         }
         break;
@@ -2576,6 +2629,7 @@ void loop()
           digitalWrite(PIN_MOTO5_PUL, LOW);
           joint_E1_pulsed = false;
         }
+        break;
       }
       default:
       {
@@ -2589,18 +2643,20 @@ void loop()
       case JOINT_STATE_STEPPER_MOVING_FORWARD:
       case JOINT_STATE_STEPPER_HITTING_LIMITER:
       {
+        if (joint_E2.discrete_time <= joint_E2.time_to_speed)
+        {
+          joint_E2.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_E2.discrete_time, joint_E2.time_to_speed, joint_E2.final_speed));
+        }
+        else
+        {
+          if (joint_E2.discrete_time >= joint_E2.total_motion_time - joint_E2.time_to_speed)
+          {
+            joint_E2.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_E2.total_motion_time - joint_E2.discrete_time, joint_E2.time_to_speed, joint_E2.final_speed));
+          }
+        }                                        
         if (joint_E2_pulsed)
         {
           digitalWrite(PIN_MOTO4_PUL, LOW);
-
-          if (joint_E2.total_steps_made >= JOINT_E2_FULL_SPEED_STEPS && abs(joint_E2.motion_steps_remaining) >= JOINT_E2_FULL_SPEED_STEPS)
-          {
-            joint_E2.current_period = JOINT_E2_TIMER_FAST_PERIOD;
-          }
-          else
-          {
-            joint_E2.current_period = min(JOINT_E2_TIMER_SLOW_PERIOD, JOINT_E2_TIMER_FAST_PERIOD * (JOINT_E2_FULL_SPEED_STEPS / (double)min(joint_E2.total_steps_made, abs(joint_E2.motion_steps_remaining))));
-          }
           joint_E2_pulsed = false;
         }
         break;
@@ -2612,6 +2668,7 @@ void loop()
           digitalWrite(PIN_MOTO4_PUL, LOW);
           joint_E2_pulsed = false;
         }
+        break;
       }
       default:
       {
@@ -2625,18 +2682,20 @@ void loop()
       case JOINT_STATE_STEPPER_MOVING_FORWARD:
       case JOINT_STATE_STEPPER_HITTING_LIMITER:
       {
+        if (joint_W1.discrete_time <= joint_W1.time_to_speed)
+        {
+          joint_W1.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_W1.discrete_time, joint_W1.time_to_speed, joint_W1.final_speed));
+        }
+        else
+        {
+          if (joint_W1.discrete_time >= joint_W1.total_motion_time - joint_W1.time_to_speed)
+          {
+            joint_W1.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_W1.total_motion_time - joint_W1.discrete_time, joint_W1.time_to_speed, joint_W1.final_speed));
+          }
+        }                
         if (joint_W1_pulsed)
         {
           digitalWrite(PIN_MOTO2_PUL, LOW);
-
-          if (joint_W1.total_steps_made >= JOINT_W1_FULL_SPEED_STEPS && abs(joint_W1.motion_steps_remaining) >= JOINT_W1_FULL_SPEED_STEPS)
-          {
-            joint_W1.current_period = JOINT_W1_TIMER_FAST_PERIOD;
-          }
-          else
-          {
-            joint_W1.current_period = min(JOINT_W1_TIMER_SLOW_PERIOD, JOINT_W1_TIMER_FAST_PERIOD * (JOINT_W1_FULL_SPEED_STEPS / (double)min(joint_W1.total_steps_made, abs(joint_W1.motion_steps_remaining))));
-          }
           joint_W1_pulsed = false;
         }
         break;
@@ -2648,6 +2707,7 @@ void loop()
           digitalWrite(PIN_MOTO2_PUL, LOW);
           joint_W1_pulsed = false;
         }
+        break;
       }
       default:
       {
@@ -2660,18 +2720,20 @@ void loop()
       case JOINT_STATE_STEPPER_MOVING_FORWARD:
       case JOINT_STATE_STEPPER_HITTING_LIMITER:
       {
+        if (joint_W2.discrete_time <= joint_W2.time_to_speed)
+        {
+          joint_W2.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_W2.discrete_time, joint_W2.time_to_speed, joint_W2.final_speed));
+        }
+        else
+        {
+          if (joint_W2.discrete_time >= joint_W2.total_motion_time - joint_W2.time_to_speed)
+          {
+            joint_W2.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_W2.total_motion_time - joint_W2.discrete_time, joint_W2.time_to_speed, joint_W2.final_speed));
+          }
+        }                        
         if (joint_W2_pulsed)
         {
           digitalWrite(PIN_MOTO7_PUL, LOW);
-
-          if (joint_W2.total_steps_made >= JOINT_W2_FULL_SPEED_STEPS && abs(joint_W2.motion_steps_remaining) >= JOINT_W2_FULL_SPEED_STEPS)
-          {
-            joint_W2.current_period = JOINT_W2_TIMER_FAST_PERIOD;
-          }
-          else
-          {
-            joint_W2.current_period = min(JOINT_W2_TIMER_SLOW_PERIOD, JOINT_W2_TIMER_FAST_PERIOD * (JOINT_W2_FULL_SPEED_STEPS / (double)min(joint_W2.total_steps_made, abs(joint_W2.motion_steps_remaining))));
-          }
           joint_W2_pulsed = false;
         }
         break;
@@ -2683,6 +2745,7 @@ void loop()
           digitalWrite(PIN_MOTO7_PUL, LOW);
           joint_W2_pulsed = false;
         }
+        break;
       }
       default:
       {
@@ -2695,18 +2758,20 @@ void loop()
       case JOINT_STATE_STEPPER_MOVING_FORWARD:
       case JOINT_STATE_STEPPER_HITTING_LIMITER:
       {
+        if (joint_G.discrete_time <= joint_G.time_to_speed)
+        {
+          joint_G.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_G.discrete_time, joint_G.time_to_speed, joint_G.final_speed));
+        }
+        else
+        {
+          if (joint_G.discrete_time >= joint_G.total_motion_time - joint_G.time_to_speed)
+          {
+            joint_G.current_period = calc_Speed2Period(calc_CurrentSpeed(joint_G.total_motion_time - joint_G.discrete_time, joint_G.time_to_speed, joint_G.final_speed));
+          }
+        }                                
         if (joint_G_pulsed)
         {
           digitalWrite(PIN_MOTO1_PUL, LOW);
-
-          if (joint_G.total_steps_made >= JOINT_G_FULL_SPEED_STEPS && abs(joint_G.motion_steps_remaining) >= JOINT_G_FULL_SPEED_STEPS)
-          {
-            joint_G.current_period = JOINT_G_TIMER_FAST_PERIOD;
-          }
-          else
-          {
-            joint_G.current_period = min(JOINT_G_TIMER_SLOW_PERIOD, JOINT_G_TIMER_FAST_PERIOD * (JOINT_G_FULL_SPEED_STEPS / (double)min(joint_G.total_steps_made, abs(joint_G.motion_steps_remaining))));
-          }
           joint_G_pulsed = false;
         }
         break;
@@ -2718,6 +2783,7 @@ void loop()
           digitalWrite(PIN_MOTO1_PUL, LOW);
           joint_G_pulsed = false;
         }
+        break;
       }
       default:
       {
@@ -2832,8 +2898,11 @@ void loop()
                 case JOINT_STATE_STEPPER_HOLDING:
                 {
                   joint_S1.motion_steps_remaining += kbhit_J_S1_steps;
-                  joint_S1.current_period = JOINT_S1_TIMER_SLOW_PERIOD;
+                  joint_S1.current_period = JOINT_S1_TIMER_STOP_PERIOD;
                   joint_S1.state = JOINT_STATE_STEPPER_MOVING_FORWARD;
+
+                  joint_S1.steps_to_speed = calc_SmoothStepsToSpeed(abs(joint_S1.motion_steps_remaining), JOINT_S1_FAST_SPEED, JOINT_S1_STEPS_TO_FAST_SPEED, joint_S1.final_speed);
+                  joint_S1.total_motion_time = calc_SmoothMotionTimes(joint_S1.final_speed, abs(joint_S1.motion_steps_remaining), joint_S1.steps_to_speed, joint_S1.time_to_speed);
 
                   joint_S1.discrete_time = 0;
                   joint_S1.assumed_time = 0.0;
@@ -2867,8 +2936,8 @@ void loop()
                   joint_S2.current_period = JOINT_S2_TIMER_STOP_PERIOD;
                   joint_S2.state = JOINT_STATE_STEPPER_MOVING_FORWARD;
 
-                  joint_S2.steps_to_speed = calc_SmoothStepsToSpeed(joint_S2.motion_steps_remaining, JOINT_S2_FAST_SPEED, JOINT_S2_STEPS_TO_FAST_SPEED, joint_S2.final_speed);                  
-                  joint_S2.total_motion_time = calc_SmoothMotionTimes(joint_S2.final_speed, joint_S2.motion_steps_remaining, joint_S2.steps_to_speed, joint_S2.time_to_speed);
+                  joint_S2.steps_to_speed = calc_SmoothStepsToSpeed(abs(joint_S2.motion_steps_remaining), JOINT_S2_FAST_SPEED, JOINT_S2_STEPS_TO_FAST_SPEED, joint_S2.final_speed);                  
+                  joint_S2.total_motion_time = calc_SmoothMotionTimes(joint_S2.final_speed, abs(joint_S2.motion_steps_remaining), joint_S2.steps_to_speed, joint_S2.time_to_speed);
 
                   joint_S2.discrete_time = 0;
                   joint_S2.assumed_time = 0.0;
@@ -2898,8 +2967,11 @@ void loop()
                 case JOINT_STATE_STEPPER_HOLDING:
                 {
                   joint_E1.motion_steps_remaining += kbhit_J_E1_steps;
-                  joint_E1.current_period = JOINT_E1_TIMER_SLOW_PERIOD;
+                  joint_E1.current_period = JOINT_E1_TIMER_STOP_PERIOD;
                   joint_E1.state = JOINT_STATE_STEPPER_MOVING_FORWARD;
+
+                  joint_E1.steps_to_speed = calc_SmoothStepsToSpeed(abs(joint_E1.motion_steps_remaining), JOINT_E1_FAST_SPEED, JOINT_E1_STEPS_TO_FAST_SPEED, joint_E1.final_speed);
+                  joint_E1.total_motion_time = calc_SmoothMotionTimes(joint_E1.final_speed, abs(joint_E1.motion_steps_remaining), joint_E1.steps_to_speed, joint_E1.time_to_speed);                  
 
                   joint_E1.discrete_time = 0;
                   joint_E1.assumed_time = 0.0;
@@ -2929,8 +3001,11 @@ void loop()
                 case JOINT_STATE_STEPPER_HOLDING:
                 {
                   joint_E2.motion_steps_remaining += kbhit_J_E2_steps;
-                  joint_E2.current_period = JOINT_E2_TIMER_SLOW_PERIOD;
+                  joint_E2.current_period = JOINT_E2_TIMER_STOP_PERIOD;
                   joint_E2.state = JOINT_STATE_STEPPER_MOVING_FORWARD;
+
+                  joint_E2.steps_to_speed = calc_SmoothStepsToSpeed(abs(joint_E2.motion_steps_remaining), JOINT_E2_FAST_SPEED, JOINT_E2_STEPS_TO_FAST_SPEED, joint_E2.final_speed);
+                  joint_E2.total_motion_time = calc_SmoothMotionTimes(joint_E2.final_speed, abs(joint_E2.motion_steps_remaining), joint_E2.steps_to_speed, joint_E2.time_to_speed);
 
                   joint_E2.discrete_time = 0;
                   joint_E2.assumed_time = 0.0;
@@ -2960,8 +3035,11 @@ void loop()
                 case JOINT_STATE_STEPPER_HOLDING:
                 {
                   joint_W1.motion_steps_remaining += kbhit_J_W1_steps;
-                  joint_W1.current_period = JOINT_W1_TIMER_SLOW_PERIOD;
+                  joint_W1.current_period = JOINT_W1_TIMER_STOP_PERIOD;
                   joint_W1.state = JOINT_STATE_STEPPER_MOVING_FORWARD;
+
+                  joint_W1.steps_to_speed = calc_SmoothStepsToSpeed(abs(joint_W1.motion_steps_remaining), JOINT_W1_FAST_SPEED, JOINT_W1_STEPS_TO_FAST_SPEED, joint_W1.final_speed);                  
+                  joint_W1.total_motion_time = calc_SmoothMotionTimes(joint_W1.final_speed, abs(joint_W1.motion_steps_remaining), joint_W1.steps_to_speed, joint_W1.time_to_speed);                  
 
                   joint_W1.discrete_time = 0;
                   joint_W1.assumed_time = 0.0;
@@ -2991,8 +3069,11 @@ void loop()
                 case JOINT_STATE_STEPPER_HOLDING:
                 {
                   joint_W2.motion_steps_remaining += kbhit_J_W2_steps;
-                  joint_W2.current_period = JOINT_W2_TIMER_SLOW_PERIOD;
+                  joint_W2.current_period = JOINT_W2_TIMER_STOP_PERIOD;
                   joint_W2.state = JOINT_STATE_STEPPER_MOVING_FORWARD;
+
+                  joint_W2.steps_to_speed = calc_SmoothStepsToSpeed(abs(joint_W2.motion_steps_remaining), JOINT_W2_FAST_SPEED, JOINT_W2_STEPS_TO_FAST_SPEED, joint_W2.final_speed);
+                  joint_W2.total_motion_time = calc_SmoothMotionTimes(joint_W2.final_speed, abs(joint_W2.motion_steps_remaining), joint_W2.steps_to_speed, joint_W2.time_to_speed);                  
 
                   joint_W2.discrete_time = 0;
                   joint_W2.assumed_time = 0.0;
@@ -3022,8 +3103,11 @@ void loop()
                 case JOINT_STATE_STEPPER_HOLDING:
                 {
                   joint_G.motion_steps_remaining += kbhit_J_G_steps;
-                  joint_G.current_period = JOINT_G_TIMER_SLOW_PERIOD;
+                  joint_G.current_period = JOINT_G_TIMER_STOP_PERIOD;
                   joint_G.state = JOINT_STATE_STEPPER_MOVING_FORWARD;
+
+                  joint_G.steps_to_speed = calc_SmoothStepsToSpeed(abs(joint_G.motion_steps_remaining), JOINT_G_FAST_SPEED, JOINT_G_STEPS_TO_FAST_SPEED, joint_G.final_speed);
+                  joint_G.total_motion_time = calc_SmoothMotionTimes(joint_G.final_speed, abs(joint_G.motion_steps_remaining), joint_G.steps_to_speed, joint_G.time_to_speed);
 
                   joint_G.discrete_time = 0;
                   joint_G.assumed_time = 0.0;
@@ -3044,8 +3128,7 @@ void loop()
                 }
               }
             }
-
-            
+                        
 /*
               Serial.print("J_S1: ");
               Serial.print(kbhit_J_S1_steps);
