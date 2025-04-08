@@ -335,7 +335,7 @@ double calc_Speed2Period(double joint_speed)
 
 int calc_TimeToSpeed(double final_speed, double steps_to_speed)
 {
-  return steps_to_speed / ((1 / PI + 0.5) * final_speed);
+  return steps_to_speed / (0.5 * final_speed);
 }
 
 
@@ -356,7 +356,7 @@ int calc_SmoothMotionTimes(double final_speed, double total_steps, double steps_
 
 double calc_CurrentSpeed(int time, int time_to_speed, double final_speed)
 {
-  return (0.5 * (sin((time / (double)time_to_speed) * 0.5 * PI) + 1) *  final_speed);
+  return (0.5 * (sin(((time / (double)time_to_speed) - 0.5) * PI) + 1) *  final_speed);
 }
 
 
